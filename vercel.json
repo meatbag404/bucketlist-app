@@ -1,14 +1,5 @@
 {
-  "builds": [
-    {
-      "src": "packages/web",
-      "use": "@vercel/next"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "packages/web/$1"
-    }
-  ]
+  "buildCommand": "cd packages/web && npm run build",
+  "outputDirectory": "packages/web/.next",
+  "installCommand": "npm install"
 }
