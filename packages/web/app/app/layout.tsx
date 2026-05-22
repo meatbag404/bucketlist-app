@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useStore } from '@bucketlist/shared'
 import Link from 'next/link'
@@ -14,8 +15,14 @@ export default function AppLayout({
   const pathname = usePathname()
   const { session, profile } = useStore()
 
+  useEffect(() => {
+    if (session === false || session === null) {
+      router.push('/auth')
+    }
+  }, [session, router])
+
+  // Don't render anything if not authenticated
   if (!session) {
-    router.push('/auth')
     return null
   }
 
