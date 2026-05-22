@@ -2,12 +2,18 @@
 
 # dependencies
 node_modules/
+packages/*/node_modules/
 
 # Expo
 .expo/
+packages/mobile/.expo/
 dist/
 web-build/
 expo-env.d.ts
+
+# Next.js
+packages/web/.next/
+packages/web/out/
 
 # Native
 .kotlin/
@@ -39,3 +45,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Claude Code
+.claude

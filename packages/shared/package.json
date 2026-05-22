@@ -1,0 +1,19 @@
+{
+  "name": "@bucketlist/shared",
+  "version": "1.0.0",
+  "private": true,
+  "main": "lib/index.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.ts",
+      "import": "./lib/index.ts"
+    }
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.39.0",
+    "zustand": "^4.4.7"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.2"
+  }
+}
