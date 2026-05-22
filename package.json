@@ -14,5 +14,8 @@
     "build:web": "cd packages/web && npm run build",
     "start:web": "cd packages/web && npm start",
     "vercel-build": "npm run build:web"
+  },
+  "devDependencies": {
+    "next": "16.2.6"
   }
 }
