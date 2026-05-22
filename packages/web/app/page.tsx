@@ -1,13 +1,20 @@
-import Link from 'next/link'
+'use client'
+
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { useStore } from '@bucketlist/shared'
 
 export default function Home() {
-  return (
-    <main style={{ padding: '2rem' }}>
-      <h1>Bucket List</h1>
-      <p>Web version coming soon!</p>
-      <Link href="/auth">
-        <button>Sign In</button>
-      </Link>
-    </main>
-  )
+  const router = useRouter()
+  const { session } = useStore()
+
+  useEffect(() => {
+    if (session) {
+      router.push('/app')
+    } else {
+      router.push('/auth')
+    }
+  }, [session, router])
+
+  return null
 }
