@@ -76,3 +76,6 @@ credentials.json
 
 # Claude Code
 .claude
+
+# Stock photos for local QA / test photo uploads (kept out of git to avoid bloat)
+stock-photos/
