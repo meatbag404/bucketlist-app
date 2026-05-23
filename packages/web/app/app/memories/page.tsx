@@ -65,7 +65,6 @@ function MemoryCard({ m, tilt }: { m: Memory; tilt: number }) {
             <div style={{
               width: '100%', aspectRatio: '4 / 5',
               background: resolveColor(bgColor),
-              opacity: 0.6,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontFamily: FONT_MONO, fontSize: 11, color: T.ink, opacity: 0.55, letterSpacing: 0.4, textTransform: 'uppercase',
               padding: 12, textAlign: 'center',
