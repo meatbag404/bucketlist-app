@@ -37,7 +37,35 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
+.env.local
 .env*.local
+.env.*.local
+.env.production.local
+.env.development.local
+.env.test.local
+
+# Credentials and secrets
+.credentials
+.aws/
+.gcp/
+credentials.json
+*-credentials.json
+*.pem
+*.key
+*.p8
+*.p12
+.ssh/
+.netrc
+.npmrc
+.yarnrc
+.ruby-version
+.python-version
+
+# IDE secrets
+.vscode/settings.json.local
+.idea/shelf/
+*.iml
 
 # typescript
 *.tsbuildinfo

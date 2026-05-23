@@ -1,19 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useStore } from '@bucketlist/shared'
 import { supabase } from '@bucketlist/shared'
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [mounted, setMounted] = useState(false)
   const setSession = useStore(state => state.setSession)
   const setProfile = useStore(state => state.setProfile)
   const fetchBuckets = useStore(state => state.fetchBuckets)
 
   useEffect(() => {
+    // Check for existing session on load
     const initAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      setSession(session)
+      setSession(session) // This also sets sessionLoading = false
 
       if (session?.user?.id) {
         const { data } = await supabase
@@ -27,8 +27,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
     }
 
     initAuth()
-    setMounted(true)
 
+    // Listen for auth changes (login, logout, token refresh)
     const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session)
       if (session?.user?.id) {
@@ -45,6 +45,5 @@ export function Providers({ children }: { children: React.ReactNode }) {
     return () => data?.subscription?.unsubscribe()
   }, [setSession, setProfile, fetchBuckets])
 
-  if (!mounted) return null
   return <>{children}</>
 }

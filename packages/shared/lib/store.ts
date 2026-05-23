@@ -31,6 +31,7 @@ export interface FriendProfile {
 
 interface AppState {
   session: any | null
+  sessionLoading: boolean
   profile: Profile | null
   myAvatarUrl: string | null
   setSession: (session: any) => void
@@ -99,14 +100,15 @@ interface AppState {
   addFriendToBucket: (friendId: string, bucketId: string) => Promise<string | null>
   setBucketHero: (bucketId: string, uri: string) => Promise<string | null>
   reorderItems: (reorderedTodo: ItemWithDetails[]) => Promise<void>
-  renameBucket: (bucketId: string, name: string, emoji: string) => Promise<string | null>
+  renameBucket: (bucketId: string, name: string, emoji: string, colorToken?: string | null) => Promise<string | null>
 }
 
 export const useStore = create<AppState>((set, get) => ({
   session: null,
+  sessionLoading: true,
   profile: null,
   myAvatarUrl: null,
-  setSession: (session) => set({ session }),
+  setSession: (session) => set({ session, sessionLoading: false }),
   setMyAvatarUrl: (url) => set({ myAvatarUrl: url }),
   setProfile: (profile) => {
     set({ profile })
@@ -194,7 +196,8 @@ export const useStore = create<AppState>((set, get) => ({
           bucket_members (
             *,
             profiles (*)
-          )
+          ),
+          items (id, done)
         )
       `)
       .eq('status', 'active')
@@ -205,7 +208,15 @@ export const useStore = create<AppState>((set, get) => ({
     const buckets = data
       .map((row: any) => row.buckets)
       .filter(Boolean)
-      .map((b: any) => ({ ...b, members: b.bucket_members || [] }))
+      .map((b: any) => {
+        const items = b.items || []
+        return {
+          ...b,
+          members: b.bucket_members || [],
+          item_total: items.length,
+          item_done: items.filter((i: any) => i.done).length,
+        }
+      })
       .filter((b: any) => {
         if (seenIds.has(b.id)) return false
         seenIds.add(b.id)
@@ -282,15 +293,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       const bucket = get().getActiveBucket()
       if (bucket && profile && item) {
-        await supabase.from('activity').insert({
-          bucket_id: bucket.id,
-          user_id: profile.id,
-          action: 'done',
-          item_id: itemId,
-          item_title: item.title,
-          emoji: item.emoji || '✅',
-        })
-
+        // Note: activity is auto-logged by the log_item_done() DB trigger
         get().sendPushToOthers(
           `${profile.name} checked something off! ✅`,
           item.title
@@ -322,11 +325,11 @@ export const useStore = create<AppState>((set, get) => ({
         .delete()
         .eq('item_id', itemId)
         .eq('user_id', profile.id)
-      get().updateItem(itemId, { hearted_by_me: false, hearts: item.hearts - 1 })
+      get().updateItem(itemId, { hearted_by_me: false, hearts: Math.max(0, (item.hearts || 0) - 1) })
     } else {
       await supabase.from('item_hearts')
         .insert({ item_id: itemId, user_id: profile.id })
-      get().updateItem(itemId, { hearted_by_me: true, hearts: item.hearts + 1 })
+      get().updateItem(itemId, { hearted_by_me: true, hearts: (item.hearts || 0) + 1 })
 
       const bucket = get().getActiveBucket()
       if (bucket) {
@@ -395,7 +398,22 @@ export const useStore = create<AppState>((set, get) => ({
 
   editItem: async (itemId, updates) => {
     const { error } = await supabase.from('items').update(updates).eq('id', itemId)
-    if (!error) get().updateItem(itemId, updates as any)
+    if (error) {
+      // If the schema doesn't have a column we tried to set (migration pending),
+      // strip the unknown column and retry once so the rest of the edit still saves.
+      const stripMatch = error.message.match(/column "?([a-z_]+)"? .*does not exist|Could not find the '?([a-z_]+)'? column/i)
+      const missing = stripMatch?.[1] || stripMatch?.[2]
+      if (missing && Object.prototype.hasOwnProperty.call(updates as any, missing)) {
+        const retryUpdates = { ...(updates as any) }
+        delete retryUpdates[missing]
+        const retry = await supabase.from('items').update(retryUpdates).eq('id', itemId)
+        if (!retry.error) get().updateItem(itemId, retryUpdates as any)
+        return
+      }
+      console.error('editItem:', error)
+      return
+    }
+    get().updateItem(itemId, updates as any)
   },
 
   approveJoin: async (membershipId, bucketId, userId) => {
@@ -598,11 +616,26 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  renameBucket: async (bucketId, name, emoji) => {
-    const { error } = await supabase.from('buckets').update({ name, emoji }).eq('id', bucketId)
-    if (error) return error.message
+  renameBucket: async (bucketId, name, emoji, colorToken) => {
+    const patch: any = { name, emoji }
+    if (colorToken !== undefined) patch.color_token = colorToken
+
+    let { error } = await supabase.from('buckets').update(patch).eq('id', bucketId)
+    if (error) {
+      // If color_token column isn't there yet (migration pending), strip it and retry
+      const stripMatch = error.message.match(/column "?([a-z_]+)"? .*does not exist|Could not find the '?([a-z_]+)'? column/i)
+      const missing = stripMatch?.[1] || stripMatch?.[2]
+      if (missing && Object.prototype.hasOwnProperty.call(patch, missing)) {
+        const retryPatch = { ...patch }
+        delete retryPatch[missing]
+        const retry = await supabase.from('buckets').update(retryPatch).eq('id', bucketId)
+        if (retry.error) return retry.error.message
+      } else {
+        return error.message
+      }
+    }
     set(state => ({
-      buckets: state.buckets.map(b => b.id === bucketId ? { ...b, name, emoji } : b),
+      buckets: state.buckets.map(b => b.id === bucketId ? { ...b, ...patch } : b),
     }))
     return null
   },
