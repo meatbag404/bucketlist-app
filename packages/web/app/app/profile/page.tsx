@@ -1,168 +1,174 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { useStore } from '@bucketlist/shared'
-import { supabase } from '@bucketlist/shared'
+import { useState, useEffect } from 'react'
+import {
+  useStore, supabase, useViewport,
+  T, FONT_DISPLAY, FONT_MONO, FONT_UI, STICKER_BORDER_SM, STICKER_SHADOW_SM,
+  Sticker, StickerButton, Avatar, PageHeading,
+} from '@bucketlist/shared'
 
 export default function ProfilePage() {
-  const { profile, myAvatarUrl } = useStore()
-  const [name, setName] = useState(profile?.name || '')
-  const [handle, setHandle] = useState(profile?.handle || '')
-  const [city, setCity] = useState(profile?.city || '')
-  const [state, setState] = useState(profile?.state || '')
+  const { profile, setProfile } = useStore()
+  const vp = useViewport()
+
+  const [name, setName] = useState('')
+  const [handle, setHandle] = useState('')
+  const [city, setCity] = useState('')
+  const [state, setState] = useState('')
   const [loading, setLoading] = useState(false)
   const [saved, setSaved] = useState(false)
-  const router = useRouter()
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (profile) {
+      setName(profile.name || '')
+      setHandle(profile.handle || '')
+      setCity((profile as any).city || '')
+      setState((profile as any).state || '')
+    }
+  }, [profile])
 
   if (!profile) {
-    return <div className="p-8">Loading...</div>
+    return (
+      <div style={{ padding: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="emoji" style={{ fontSize: '2rem', marginBottom: 8 }}>⏳</div>
+          <p style={{ fontFamily: FONT_DISPLAY, color: T.inkMuted, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>Loading…</p>
+        </div>
+      </div>
+    )
   }
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
-    setSaved(false)
-
+    setLoading(true); setSaved(false); setError(null)
     try {
-      const { error } = await supabase
+      const { error: updateError } = await supabase
         .from('profiles')
         .update({
-          name,
-          handle,
+          name, handle,
           city: city || null,
           state: state || null,
         })
         .eq('id', profile.id)
-
-      if (error) throw error
+      if (updateError) throw updateError
+      setProfile({ ...profile, name, handle, city: city || null, state: state || null })
       setSaved(true)
-      router.refresh()
+      setTimeout(() => setSaved(false), 3000)
     } catch (err: any) {
-      alert(err.message)
-    } finally {
-      setLoading(false)
+      setError(err.message)
+    } finally { setLoading(false) }
+  }
+
+  const handleSignOut = async () => {
+    if (confirm('Are you sure you want to sign out?')) {
+      await supabase.auth.signOut()
+      window.location.href = '/auth'
     }
   }
 
   return (
-    <div className="p-8 max-w-2xl">
-      <h1 className="text-4xl font-bold text-gray-900 mb-8">Profile</h1>
+    <div style={{ maxWidth: 640 }}>
+      <PageHeading lineA="YOUR" lineB="PROFILE." sub="Manage your name, handle, and where you're based." vp={vp} />
 
-      {/* Avatar */}
-      <div className="bg-white rounded-lg p-8 mb-8">
-        <div className="flex items-center gap-6">
-          <div
-            className="w-24 h-24 rounded-full flex items-center justify-center text-5xl"
-            style={{
-              backgroundColor: [
-                '#FF6B6B',
-                '#4ECDC4',
-                '#45B7D1',
-                '#FFA07A',
-                '#98D8C8',
-                '#F7DC6F',
-                '#BB8FCE',
-                '#85C1E2',
-                '#F8B88B',
-                '#A8D8EA',
-              ][profile.avatar_color % 10],
-            }}
-          >
-            {profile.name?.charAt(0).toUpperCase()}
-          </div>
-          <div>
-            <p className="text-xl font-semibold text-gray-900">{profile.name}</p>
-            <p className="text-gray-600">@{profile.handle}</p>
-            <p className="text-sm text-gray-500 mt-2">{profile.id}</p>
-          </div>
+      {/* Identity card */}
+      <Sticker color="cyan" radius={18} style={{ padding: 24, marginBottom: 22, display: 'flex', alignItems: 'center', gap: 20 }}>
+        <Avatar p={profile} size={84} />
+        <div style={{ minWidth: 0 }}>
+          <p style={{
+            fontFamily: FONT_DISPLAY, fontSize: vp === 'mobile' ? 22 : 28, fontWeight: 700,
+            color: T.ink, textTransform: 'uppercase' as const, letterSpacing: -0.8, lineHeight: 1,
+          }}>{profile.name}</p>
+          <p style={{ fontFamily: FONT_MONO, fontSize: 12, color: T.ink, opacity: 0.7, marginTop: 4 }}>@{profile.handle}</p>
+          {(profile as any).city && (
+            <p style={{ fontFamily: FONT_DISPLAY, fontSize: 11, color: T.ink, marginTop: 6, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+              📍 {(profile as any).city}{(profile as any).state ? `, ${(profile as any).state}` : ''}
+            </p>
+          )}
         </div>
-      </div>
+      </Sticker>
 
-      {/* Edit Form */}
-      <form onSubmit={handleSave} className="bg-white rounded-lg p-8 space-y-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Full Name
-          </label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-            required
-          />
-        </div>
+      {/* Edit form */}
+      <Sticker radius={16} style={{ padding: 24, marginBottom: 22 }}>
+        <div style={{
+          fontFamily: FONT_DISPLAY, fontSize: 11, fontWeight: 700, letterSpacing: 1.2,
+          color: T.inkMuted, textTransform: 'uppercase', marginBottom: 16,
+        }}>EDIT DETAILS</div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Handle
-          </label>
-          <input
-            type="text"
-            value={handle}
-            onChange={(e) => setHandle(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-            required
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              City
-            </label>
-            <input
-              type="text"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-              placeholder="Optional"
-            />
+        {error && (
+          <div style={{
+            padding: '10px 14px', marginBottom: 16,
+            background: '#FAECE7', border: STICKER_BORDER_SM, boxShadow: STICKER_SHADOW_SM, borderRadius: 10,
+          }}>
+            <p style={{ fontWeight: 700, fontSize: '0.85rem', color: T.ink }}>{error}</p>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              State
-            </label>
-            <input
-              type="text"
-              value={state}
-              onChange={(e) => setState(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-              placeholder="Optional"
-            />
-          </div>
-        </div>
-
-        {saved && (
-          <p className="text-green-600 text-sm">Profile updated successfully!</p>
         )}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 rounded-lg transition disabled:opacity-50"
-        >
-          {loading ? 'Saving...' : 'Save Changes'}
-        </button>
-      </form>
+        <form onSubmit={handleSave}>
+          <FieldLabel>Full Name</FieldLabel>
+          <input type="text" value={name} onChange={e => setName(e.target.value)} className="input" required style={{ marginBottom: 16 }} />
 
-      {/* Danger Zone */}
-      <div className="bg-red-50 border border-red-200 rounded-lg p-6 mt-8">
-        <h2 className="text-lg font-semibold text-red-900 mb-4">Danger Zone</h2>
+          <FieldLabel>Handle</FieldLabel>
+          <input type="text" value={handle} onChange={e => setHandle(e.target.value)} className="input" required style={{ marginBottom: 4 }} />
+          <p style={{ fontSize: '0.75rem', color: T.inkMuted, marginTop: 4, marginBottom: 16, fontFamily: FONT_UI }}>
+            Friends search for you by @handle
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+            <div>
+              <FieldLabel>City</FieldLabel>
+              <input type="text" value={city} onChange={e => setCity(e.target.value)} className="input" placeholder="Optional" />
+            </div>
+            <div>
+              <FieldLabel>State / Region</FieldLabel>
+              <input type="text" value={state} onChange={e => setState(e.target.value)} className="input" placeholder="Optional" />
+            </div>
+          </div>
+
+          {saved && (
+            <div style={{
+              padding: '10px 14px', marginBottom: 16,
+              background: '#EDFCE7', border: STICKER_BORDER_SM, boxShadow: STICKER_SHADOW_SM, borderRadius: 10,
+            }}>
+              <p style={{ fontWeight: 700, fontSize: '0.85rem', color: T.ink }}>✓ Profile saved!</p>
+            </div>
+          )}
+
+          <StickerButton color="ink" size="lg" type="submit" disabled={loading} style={{ width: '100%' }}>
+            {loading ? 'SAVING…' : 'SAVE CHANGES'}
+          </StickerButton>
+        </form>
+      </Sticker>
+
+      {/* Sign out */}
+      <Sticker radius={16} style={{ padding: 22 }}>
+        <div style={{
+          fontFamily: FONT_DISPLAY, fontSize: 11, fontWeight: 700, letterSpacing: 1.2,
+          color: T.inkMuted, textTransform: 'uppercase', marginBottom: 14,
+        }}>ACCOUNT</div>
         <button
-          onClick={async () => {
-            if (confirm('Are you sure? This will sign you out.')) {
-              await supabase.auth.signOut()
-              router.push('/auth')
-            }
+          onClick={handleSignOut}
+          className="bk-sticker-btn"
+          style={{
+            padding: '10px 18px', borderRadius: 12,
+            background: '#FAECE7', color: T.red,
+            border: '2px solid ' + T.red, boxShadow: '2px 2px 0 ' + T.red,
+            fontFamily: FONT_DISPLAY, fontSize: 12, fontWeight: 700, letterSpacing: 0.6,
+            textTransform: 'uppercase', cursor: 'pointer',
           }}
-          className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg transition"
         >
           Sign Out
         </button>
-      </div>
+      </Sticker>
     </div>
+  )
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      fontFamily: FONT_DISPLAY, fontSize: 10, fontWeight: 700, letterSpacing: 1.2,
+      color: T.inkMuted, textTransform: 'uppercase', marginBottom: 6,
+    }}>{children}</div>
   )
 }
