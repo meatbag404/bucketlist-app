@@ -40,11 +40,35 @@ export {
   SectionRule,
   SectionLabel,
   MonoLabel,
+  avatarPublicUrl,
 } from './sticker'
 export type { AvatarProfile } from './sticker'
 
 export { NavIcon, NAV_ICONS } from './nav-icons'
 export type { NavIconName } from './nav-icons'
+
+export {
+  ICON_SET,
+  ICON_CATEGORIES,
+  Icon8,
+  icon8Url,
+  getIcon,
+  parseIconId,
+  makeIconId,
+  iconPlatformLabel,
+} from './icon-set'
+export type { Icon8Entry, IconCategoryKey, Icons8Platform, IconColorOverride } from './icon-set'
+
+export { IconField, useIconPickerResume } from './icon-field'
+export { InlineIconBrowser } from './inline-icon-browser'
+export { ConfettiHost, useConfetti } from './confetti'
+
+export {
+  daysUntil,
+  targetCountdown,
+  formatTargetDate,
+  todayISO,
+} from './target-date'
 
 export { useViewport } from './use-viewport'
 export type { Viewport } from './use-viewport'

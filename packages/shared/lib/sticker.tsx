@@ -122,8 +122,12 @@ type StickerChipProps = {
 }
 
 export function StickerChip({ children, active, color, onClick, style }: StickerChipProps) {
-  const bg = active ? resolveColor(color || 'ink') : T.surface
-  const ink = active && color === 'ink' ? T.bg : T.ink
+  const activeColor = color || 'ink'
+  const bg = active ? resolveColor(activeColor) : T.surface
+  // Flip text to cream when the active fill is dark enough to hide ink.
+  const ink = active && (activeColor === 'ink' || activeColor === 'blue' || activeColor === 'red')
+    ? T.bg
+    : T.ink
   return (
     <button
       onClick={onClick}
@@ -181,6 +185,8 @@ export type AvatarProfile = {
   avatar_color?: number | null
   /** palette color name override */
   color?: string | null
+  /** storage path inside the `avatars` Supabase bucket, e.g. `<userId>/abc.jpg` */
+  avatar_url?: string | null
 }
 
 function getInitials(p: AvatarProfile | undefined | null): string {
@@ -200,8 +206,18 @@ function getAvatarBg(p: AvatarProfile | undefined | null): string {
 }
 
 export function Avatar({
-  p, size = 32, ring,
-}: { p?: AvatarProfile | null; size?: number; ring?: string }) {
+  p, size = 32, ring, imageUrl,
+}: { p?: AvatarProfile | null; size?: number; ring?: string; imageUrl?: string | null }) {
+  // Prefer an explicit imageUrl prop (e.g. signed URL from the store cache);
+  // fall back to the storage-path on the profile if the bucket is public.
+  const src = imageUrl ?? avatarPublicUrl(p?.avatar_url)
+  // Track image-load failures so we silently fall back to initials when the
+  // avatars storage bucket is missing / file was deleted / network blocked.
+  const [imageBroken, setImageBroken] = React.useState(false)
+  React.useEffect(() => { setImageBroken(false) }, [src])
+
+  const showImage = !!src && !imageBroken
+
   return (
     <div style={{
       width: size, height: size, borderRadius: 99,
@@ -214,8 +230,34 @@ export function Avatar({
       fontFamily: FONT_DISPLAY,
       fontSize: size * 0.36, fontWeight: 700, letterSpacing: -0.3,
       flex: '0 0 auto',
-    }}>{getInitials(p)}</div>
+      overflow: 'hidden',
+    }}>
+      {showImage ? (
+        <img
+          src={src!}
+          alt=""
+          width={size}
+          height={size}
+          draggable={false}
+          onError={() => setImageBroken(true)}
+          style={{ width: size, height: size, objectFit: 'cover', display: 'block' }}
+        />
+      ) : (
+        getInitials(p)
+      )}
+    </div>
   )
+}
+
+// Resolve a storage path inside the public `avatars` bucket to its public URL.
+// Returns null if the path is empty or env vars aren't set.
+export function avatarPublicUrl(path: string | null | undefined): string | null {
+  if (!path) return null
+  // If a full URL was stored (legacy or external), pass through.
+  if (/^https?:\/\//i.test(path)) return path
+  const base = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SUPABASE_URL) || ''
+  if (!base) return null
+  return `${base}/storage/v1/object/public/avatars/${path}`
 }
 
 export function AvatarStack({

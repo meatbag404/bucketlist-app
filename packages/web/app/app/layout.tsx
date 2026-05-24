@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   useStore, supabase, useViewport,
   T, FONT_DISPLAY, FONT_MONO, STICKER_BORDER, STICKER_BORDER_SM, STICKER_SHADOW, STICKER_SHADOW_SM,
-  HighlightBlock, Avatar, NavIcon, type NavIconName,
+  HighlightBlock, Avatar, NavIcon, ConfettiHost, type NavIconName,
 } from '@bucketlist/shared'
 
 // ── Nav config — matches design_handoff_bucket_web/app-shell.jsx ──
@@ -155,6 +155,8 @@ function Sidebar() {
 }
 
 // ── Top bar (mobile / tablet) ───────────────────────────────────
+// Profile lives in the bottom nav now, so the top-right slot is the
+// activity / notifications chip instead.
 function TopBar({ vp }: { vp: 'mobile' | 'tablet' }) {
   return (
     <header style={{
@@ -165,7 +167,7 @@ function TopBar({ vp }: { vp: 'mobile' | 'tablet' }) {
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     }}>
       <Logo size="sm" />
-      <Link href="/app/activity" className="bk-sticker-btn" style={{
+      <Link href="/app/activity" aria-label="Activity" className="bk-sticker-btn" style={{
         width: 40, height: 40, borderRadius: 99,
         background: T.pink, border: STICKER_BORDER_SM, boxShadow: STICKER_SHADOW_SM,
         cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -181,12 +183,13 @@ function TopBar({ vp }: { vp: 'mobile' | 'tablet' }) {
 function BottomNav() {
   const pathname = usePathname()
   const tab = activeTab(pathname)
-  const items: { id: string; href: string; icon: NavIconName; color: string; isAdd?: boolean }[] = [
+  const profile = useStore(s => s.profile)
+  const items: { id: string; href: string; icon?: NavIconName; color: string; isAdd?: boolean; isProfile?: boolean }[] = [
     { id: 'buckets',  href: '/app',          icon: 'bucket',  color: 'lime' },
-    { id: 'activity', href: '/app/activity', icon: 'clock',   color: 'cyan' },
-    { id: 'add',      href: '/app/add',      icon: 'plus',    color: 'ink', isAdd: true },
     { id: 'memories', href: '/app/memories', icon: 'photo',   color: 'pink' },
+    { id: 'add',      href: '/app/add',      icon: 'plus',    color: 'ink', isAdd: true },
     { id: 'friends',  href: '/app/friends',  icon: 'friends', color: 'yellow' },
+    { id: 'profile',  href: '/app/profile',                   color: 'cyan', isProfile: true },
   ]
   return (
     <nav style={{
@@ -213,6 +216,22 @@ function BottomNav() {
           )
         }
         const on = tab === it.id
+        if (it.isProfile) {
+          return (
+            <Link key={it.id} href={it.href} aria-label="Profile" className="bk-sticker-btn" style={{
+              width: 44, height: 44, borderRadius: 99,
+              background: 'transparent',
+              border: on ? STICKER_BORDER_SM : 'none',
+              boxShadow: on ? '2px 2px 0 #0C0C0C' : 'none',
+              transform: on ? 'rotate(-3deg)' : 'rotate(0deg)',
+              cursor: 'pointer', textDecoration: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 0, overflow: 'hidden',
+            }}>
+              <Avatar p={profile} size={36} />
+            </Link>
+          )
+        }
         return (
           <Link key={it.id} href={it.href} className="bk-sticker-btn" style={{
             width: 44, height: 44, borderRadius: 99,
@@ -223,7 +242,7 @@ function BottomNav() {
             cursor: 'pointer', textDecoration: 'none',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <NavIcon name={it.icon} size={22} />
+            <NavIcon name={it.icon!} size={22} />
           </Link>
         )
       })}
@@ -258,21 +277,79 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (isDesktop) {
     return (
-      <div style={{ display: 'flex', minHeight: '100vh', background: T.bg }}>
-        <Sidebar />
-        <main style={{ flex: 1, minWidth: 0, padding: '36px 48px 64px', maxWidth: 1280 }}>
-          {children}
-        </main>
-      </div>
+      <ConfettiHost>
+        <div style={{ display: 'flex', minHeight: '100vh', background: T.bg }}>
+          <Sidebar />
+          <main style={{ flex: 1, minWidth: 0, padding: '36px 48px 64px', maxWidth: 1280 }}>
+            <MigrationBanner />
+            {children}
+          </main>
+        </div>
+      </ConfettiHost>
     )
   }
 
   // Mobile / tablet
   return (
-    <div style={{ minHeight: '100vh', background: T.bg, paddingBottom: 100 }}>
-      <TopBar vp={vp} />
-      <main style={{ padding: vp === 'tablet' ? '24px 36px' : '20px 18px' }}>{children}</main>
-      <BottomNav />
+    <ConfettiHost>
+      <div style={{ minHeight: '100vh', background: T.bg, paddingBottom: 100 }}>
+        <TopBar vp={vp} />
+        <main style={{ padding: vp === 'tablet' ? '24px 36px' : '20px 18px' }}>
+          <MigrationBanner />
+          {children}
+        </main>
+        <BottomNav />
+      </div>
+    </ConfettiHost>
+  )
+}
+
+// ── Migration warning banner ────────────────────────────────────
+// Shown when the store catches a write that failed because a column
+// doesn't exist in the user's Supabase project — i.e. a migration in
+// migrations/ hasn't been applied yet.
+function MigrationBanner() {
+  const warnings = useStore(s => s.migrationWarnings)
+  const dismiss = useStore(s => s.dismissMigrationWarning)
+  if (warnings.length === 0) return null
+  return (
+    <div style={{
+      marginBottom: 18, padding: '12px 14px',
+      background: '#FAECE7',
+      border: STICKER_BORDER_SM, boxShadow: STICKER_SHADOW_SM,
+      borderRadius: 12,
+      display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+    }}>
+      <div style={{
+        fontFamily: FONT_DISPLAY, fontSize: 10, fontWeight: 700,
+        letterSpacing: 1.2, color: T.red, textTransform: 'uppercase',
+        flex: '0 0 auto',
+      }}>Migration pending</div>
+      <div style={{
+        flex: 1, minWidth: 0,
+        fontFamily: FONT_DISPLAY, fontSize: 13, fontWeight: 700,
+        color: T.ink, letterSpacing: -0.2,
+      }}>
+        Some changes couldn't save because columns are missing in your
+        database: <span style={{ fontFamily: 'monospace' }}>{warnings.join(', ')}</span>.
+        Run the matching file in <span style={{ fontFamily: 'monospace' }}>migrations/</span>.
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {warnings.map(col => (
+          <button
+            key={col}
+            type="button"
+            onClick={() => dismiss(col)}
+            className="bk-sticker-btn"
+            style={{
+              padding: '4px 10px', borderRadius: 8,
+              background: T.surface, border: STICKER_BORDER_SM,
+              fontFamily: FONT_DISPLAY, fontSize: 10, fontWeight: 700, letterSpacing: 0.6,
+              textTransform: 'uppercase', cursor: 'pointer', color: T.ink,
+            }}
+          >Dismiss {col}</button>
+        ))}
+      </div>
     </div>
   )
 }

@@ -4,13 +4,10 @@
   "private": true,
   "workspaces": [
     "packages/shared",
-    "packages/mobile",
     "packages/web"
   ],
   "scripts": {
-    "dev:mobile": "cd packages/mobile && npm run dev",
     "dev:web": "cd packages/web && npm run dev",
-    "build:mobile": "cd packages/mobile && npm run build",
     "build:web": "cd packages/web && npm run build",
     "start:web": "cd packages/web && npm start"
   }

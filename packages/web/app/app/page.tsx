@@ -10,6 +10,7 @@ import {
   NavIcon,
   color as resolveColor,
   bucketColor, bucketColorToken,
+  Icon8, IconField, useIconPickerResume,
 } from '@bucketlist/shared'
 
 // ── Layout switcher (matches design) ─────────────────────────
@@ -107,7 +108,11 @@ function BucketCard({ b, featured, vp }: { b: any; featured?: boolean; vp: 'mobi
               fontSize: iconFontSize, lineHeight: 1,
               transform: 'rotate(-4deg)',
               flex: '0 0 auto',
-            }}>{b.emoji || '🪣'}</div>
+            }}>
+              {(b as any).icon_id
+                ? <Icon8 id={(b as any).icon_id} size={Math.round(iconSize * 0.65)} />
+                : (b.emoji || '🪣')}
+            </div>
 
             {/* Status pill — progress % when items exist, otherwise NEW (no items yet) */}
             {(() => {
@@ -219,7 +224,11 @@ function BucketListRow({ b, idx, vp }: { b: any; idx: number; vp: 'mobile' | 'ta
           fontSize: vp === 'mobile' ? '1.6rem' : '2rem', lineHeight: 1,
           transform: 'rotate(-3deg)',
           flex: '0 0 auto',
-        }}>{b.emoji || '🪣'}</div>
+        }}>
+          {(b as any).icon_id
+            ? <Icon8 id={(b as any).icon_id} size={vp === 'mobile' ? 30 : 36} />
+            : (b.emoji || '🪣')}
+        </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: FONT_DISPLAY, fontSize: vp === 'mobile' ? 18 : 22, fontWeight: 700, letterSpacing: -0.5, lineHeight: 1.1, textTransform: 'uppercase', color: T.ink }}>
             {b.name}
@@ -294,26 +303,56 @@ export default function BucketsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [name, setName] = useState('')
   const [emoji, setEmoji] = useState('🎯')
+  const [iconId, setIconId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Restore in-flight create state after returning from /app/icons.
+  const createResume = useIconPickerResume<{
+    name: string; emoji: string; iconId: string | null
+  }>('bucket-create', (saved, pickedId) => {
+    setName(saved.name)
+    setEmoji(saved.emoji)
+    setIconId(pickedId ?? saved.iconId)
+    setShowCreate(true)
+  })
+
+  const browseCreateStickers = () => {
+    const url = createResume.stash({ name, emoji, iconId })
+    router.push(url)
+  }
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!profile) return
     setLoading(true); setError(null)
     try {
-      const { data, error: insertError } = await supabase
+      const insertPayload: any = { name: name.trim(), emoji, created_by: profile.id }
+      if (iconId) insertPayload.icon_id = iconId
+      let { data, error: insertError } = await supabase
         .from('buckets')
-        .insert({ name: name.trim(), emoji, created_by: profile.id })
+        .insert(insertPayload)
         .select()
         .single()
-      if (insertError) throw insertError
+      if (insertError && /icon_id/.test(insertError.message)) {
+        // Migration not applied yet — retry without icon_id
+        delete insertPayload.icon_id
+        const retry = await supabase
+          .from('buckets')
+          .insert(insertPayload)
+          .select()
+          .single()
+        if (retry.error) throw retry.error
+        data = retry.data
+      } else if (insertError) {
+        throw insertError
+      }
       await supabase.from('bucket_members').insert({
         bucket_id: data.id,
         user_id: profile.id,
         status: 'active',
       })
-      setName(''); setEmoji('🎯'); setShowCreate(false)
+      setName(''); setEmoji('🎯'); setIconId(null); setShowCreate(false)
       await fetchBuckets()
     } catch (err: any) {
       setError(err.message)
@@ -352,6 +391,8 @@ export default function BucketsPage() {
         {showCreate && <CreateModal
           name={name} setName={setName}
           emoji={emoji} setEmoji={setEmoji}
+          iconId={iconId} setIconId={setIconId}
+          onBrowse={browseCreateStickers}
           loading={loading} error={error}
           onCancel={() => setShowCreate(false)}
           onSubmit={handleCreate}
@@ -443,6 +484,7 @@ export default function BucketsPage() {
       {showCreate && <CreateModal
         name={name} setName={setName}
         emoji={emoji} setEmoji={setEmoji}
+        iconId={iconId} setIconId={setIconId}
         loading={loading} error={error}
         onCancel={() => setShowCreate(false)}
         onSubmit={handleCreate}
@@ -454,10 +496,13 @@ export default function BucketsPage() {
 // ── Create modal ────────────────────────────────────────────────
 function CreateModal({
   name, setName, emoji, setEmoji,
+  iconId, setIconId, onBrowse,
   loading, error, onCancel, onSubmit,
 }: {
   name: string; setName: (v: string) => void
   emoji: string; setEmoji: (v: string) => void
+  iconId: string | null; setIconId: (v: string | null) => void
+  onBrowse: () => void
   loading: boolean; error: string | null
   onCancel: () => void
   onSubmit: (e: React.FormEvent) => void
@@ -501,27 +546,13 @@ function CreateModal({
           </div>
 
           <div style={{ marginBottom: 22 }}>
-            <div style={{
-              fontFamily: FONT_DISPLAY, fontSize: 10, fontWeight: 700, letterSpacing: 1.2,
-              color: T.inkMuted, textTransform: 'uppercase', marginBottom: 8,
-            }}>PICK AN ICON</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 6 }}>
-              {EMOJIS.map((e) => (
-                <button
-                  key={e}
-                  type="button"
-                  onClick={() => setEmoji(e)}
-                  className="bk-sticker-btn emoji"
-                  style={{
-                    fontSize: '1.3rem', padding: '8px 4px', borderRadius: 10, cursor: 'pointer',
-                    border: emoji === e ? '2.5px solid #0C0C0C' : '2px solid #e0e0e0',
-                    background: emoji === e ? T.lime : '#fff',
-                    boxShadow: emoji === e ? STICKER_SHADOW_SM : 'none',
-                    lineHeight: 1,
-                  }}
-                >{e}</button>
-              ))}
-            </div>
+            <IconField
+              iconId={iconId}
+              emoji={emoji}
+              onBrowse={onBrowse}
+              onClearIcon={() => setIconId(null)}
+              label="Pick an icon"
+            />
           </div>
 
           <div style={{ display: 'flex', gap: 12 }}>

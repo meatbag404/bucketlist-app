@@ -7,7 +7,10 @@ import {
   T, FONT_DISPLAY, FONT_UI, STICKER_BORDER_SM, STICKER_SHADOW_SM,
   Sticker, StickerButton, StickerChip, HighlightBlock, Avatar, PageHeading,
   color as resolveColor,
+  Icon8, getIcon,
 } from '@bucketlist/shared'
+
+const PICKER_RESULT_KEY = 'iconPicker:result'
 
 const CARD_COLORS = ['cyan', 'pink', 'lime', 'yellow', 'blue', 'red'] as const
 function colorForBucket(id: string): string {
@@ -28,6 +31,7 @@ function AddScreenInner() {
   const [bucketId, setBucketId] = useState(initialBucketId)
   const [title, setTitle] = useState('')
   const [emoji, setEmoji] = useState('✨')
+  const [iconId, setIconId] = useState<string | null>(null)
   const [memoryNote, setMemoryNote] = useState('')
   const [tagged, setTagged] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
@@ -36,6 +40,22 @@ function AddScreenInner() {
   useEffect(() => {
     if (!bucketId && buckets.length > 0) setBucketId(buckets[0].id)
   }, [buckets, bucketId])
+
+  // Pick up a sticker selection returned by the /app/icons picker.
+  useEffect(() => {
+    const consume = () => {
+      if (typeof window === 'undefined') return
+      const id = window.sessionStorage.getItem(PICKER_RESULT_KEY)
+      if (id) {
+        setIconId(id)
+        window.sessionStorage.removeItem(PICKER_RESULT_KEY)
+      }
+    }
+    consume()
+    const onFocus = () => consume()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
 
   const activeBucket = buckets.find(b => b.id === bucketId)
   const bucketColor = activeBucket ? colorForBucket(activeBucket.id) : 'cyan'
@@ -61,6 +81,7 @@ function AddScreenInner() {
           bucket_id: bucketId,
           title: title.trim(),
           emoji,
+          icon_id: iconId,
           memory_note: memoryNote.trim() || null,
           created_by: profile.id,
         })
@@ -167,13 +188,21 @@ function AddScreenInner() {
         {/* Title + emoji */}
         <Sticker color={bucketColor} radius={18} shadow="lg" style={{ padding: 18, marginBottom: 18 }}>
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-            <div className="emoji" style={{
-              width: 68, height: 68, borderRadius: 14,
-              background: T.surface, border: STICKER_BORDER_SM, boxShadow: STICKER_SHADOW_SM,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '2rem', lineHeight: 1, transform: 'rotate(-3deg)',
-              flex: '0 0 auto',
-            }}>{emoji}</div>
+            <button
+              type="button"
+              onClick={() => router.push(`/app/icons${iconId ? `?selected=${encodeURIComponent(iconId)}` : ''}`)}
+              className="emoji"
+              aria-label="Browse stickers"
+              style={{
+                width: 68, height: 68, borderRadius: 14, padding: 0,
+                background: T.surface, border: STICKER_BORDER_SM, boxShadow: STICKER_SHADOW_SM,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '2rem', lineHeight: 1, transform: 'rotate(-3deg)',
+                flex: '0 0 auto', cursor: 'pointer',
+              }}
+            >
+              {iconId ? <Icon8 id={iconId} size={44} /> : <span>{emoji}</span>}
+            </button>
             <input
               value={title}
               onChange={e => setTitle(e.target.value)}
@@ -190,23 +219,47 @@ function AddScreenInner() {
             />
           </div>
 
-          {/* Emoji picker grid */}
-          <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 6 }}>
-            {ITEM_EMOJIS.map((e) => (
-              <button
-                key={e}
-                type="button"
-                onClick={() => setEmoji(e)}
-                className="bk-sticker-btn emoji"
-                style={{
-                  fontSize: '1.2rem', padding: '8px 4px', borderRadius: 8, cursor: 'pointer',
-                  border: emoji === e ? '2.5px solid #0C0C0C' : '2px solid rgba(12,12,12,0.15)',
-                  background: emoji === e ? T.surface : 'rgba(255,255,255,0.5)',
-                  boxShadow: emoji === e ? STICKER_SHADOW_SM : 'none',
-                  lineHeight: 1,
-                }}
-              >{e}</button>
-            ))}
+          {/* Sticker label + browse-more CTA */}
+          <div style={{
+            marginTop: 12, display: 'flex', alignItems: 'center', gap: 10,
+            justifyContent: 'space-between',
+          }}>
+            <div style={{
+              fontFamily: FONT_DISPLAY, fontSize: 11, fontWeight: 700, letterSpacing: 1.2,
+              color: T.ink, opacity: 0.75, textTransform: 'uppercase',
+            }}>
+              {iconId
+                ? `STICKER · ${getIcon(iconId)?.name ?? 'CUSTOM'}`
+                : 'PICK A QUICK EMOJI OR BROWSE STICKERS →'}
+            </div>
+            <StickerButton
+              size="sm"
+              onClick={() => router.push(`/app/icons${iconId ? `?selected=${encodeURIComponent(iconId)}` : ''}`)}
+            >
+              {iconId ? 'CHANGE' : 'BROWSE'}
+            </StickerButton>
+          </div>
+
+          {/* Quick emoji picker grid */}
+          <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 6 }}>
+            {ITEM_EMOJIS.map((e) => {
+              const active = !iconId && emoji === e
+              return (
+                <button
+                  key={e}
+                  type="button"
+                  onClick={() => { setEmoji(e); setIconId(null) }}
+                  className="bk-sticker-btn emoji"
+                  style={{
+                    fontSize: '1.2rem', padding: '8px 4px', borderRadius: 8, cursor: 'pointer',
+                    border: active ? '2.5px solid #0C0C0C' : '2px solid rgba(12,12,12,0.15)',
+                    background: active ? T.surface : 'rgba(255,255,255,0.5)',
+                    boxShadow: active ? STICKER_SHADOW_SM : 'none',
+                    lineHeight: 1,
+                  }}
+                >{e}</button>
+              )
+            })}
           </div>
         </Sticker>
 

@@ -10,6 +10,8 @@ import {
   color as resolveColor,
   STICKER_COLOR_TOKENS, hashedColorToken, randomColorToken, itemColor, bucketColor, bucketColorToken,
   type StickerColorToken,
+  Icon8, IconField, useIconPickerResume, useConfetti,
+  targetCountdown, formatTargetDate,
 } from '@bucketlist/shared'
 import { LocationAutocomplete } from '../../../components/LocationAutocomplete'
 
@@ -108,6 +110,8 @@ function ItemRow({
         >
           {item.done ? (
             <NavIcon name="check" size={28} />
+          ) : item.icon_id ? (
+            <Icon8 id={item.icon_id} size={36} />
           ) : (
             <span style={{ display: 'inline-block' }}>{displayEmoji}</span>
           )}
@@ -138,6 +142,23 @@ function ItemRow({
                 whiteSpace: 'nowrap',
               }}>📍 {item.location}</span>
             )}
+            {!item.done && (() => {
+              const cd = targetCountdown(item.target_date)
+              if (!cd) return null
+              const bg = cd.tone === 'overdue' ? T.red
+                : cd.tone === 'today' ? T.yellow
+                : cd.tone === 'soon' ? T.yellow
+                : T.lime
+              const fg = cd.tone === 'overdue' ? '#fff' : T.ink
+              return (
+                <span style={{
+                  padding: '2px 8px', background: bg, color: fg,
+                  border: '1.5px solid #0C0C0C', borderRadius: 6,
+                  fontFamily: FONT_DISPLAY, fontSize: 9, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase',
+                  whiteSpace: 'nowrap',
+                }}>⏰ {cd.label}</span>
+              )
+            })()}
             {item.created_by_profile?.name && (
               <span style={{
                 padding: '2px 8px', background: T.bg, border: '1.5px solid #0C0C0C', borderRadius: 6,
@@ -291,7 +312,7 @@ function ItemRow({
               fontFamily: FONT_DISPLAY, fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
               textTransform: 'uppercase' as const,
             }}
-          ><span>✎</span><span>Edit</span></button>
+          ><NavIcon name="pencil" size={12} color={T.inkMuted} /><span>Edit</span></button>
           <button
             onClick={() => onDelete(item.id)}
             className="bk-sticker-btn"
@@ -302,10 +323,18 @@ function ItemRow({
               color: deleteConfirm === item.id ? '#fff' : T.inkMuted,
               border: '1.5px solid ' + (deleteConfirm === item.id ? '#0C0C0C' : 'rgba(12,12,12,0.15)'),
               cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 5,
               fontFamily: FONT_DISPLAY, fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
               textTransform: 'uppercase' as const,
             }}
-          >{deleteConfirm === item.id ? 'CONFIRM?' : '✕ Delete'}</button>
+          >
+            {deleteConfirm === item.id ? <span>CONFIRM?</span> : (
+              <>
+                <NavIcon name="trash" size={12} color={deleteConfirm === item.id ? '#fff' : T.inkMuted} />
+                <span>Delete</span>
+              </>
+            )}
+          </button>
         </div>
       )}
 
@@ -340,10 +369,18 @@ function ItemRow({
               color: deleteConfirm === item.id ? '#fff' : T.inkMuted,
               border: '1.5px solid ' + (deleteConfirm === item.id ? '#0C0C0C' : 'rgba(12,12,12,0.15)'),
               cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 5,
               fontFamily: FONT_DISPLAY, fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
               textTransform: 'uppercase' as const,
             }}
-          >{deleteConfirm === item.id ? 'CONFIRM?' : '✕ Delete'}</button>
+          >
+            {deleteConfirm === item.id ? <span>CONFIRM?</span> : (
+              <>
+                <NavIcon name="trash" size={12} color={deleteConfirm === item.id ? '#fff' : T.inkMuted} />
+                <span>Delete</span>
+              </>
+            )}
+          </button>
         </div>
       )}
     </Sticker>
@@ -373,14 +410,17 @@ export default function BucketPage() {
 
   const [title, setTitle] = useState('')
   const [itemEmoji, setItemEmoji] = useState('✨')
+  const [itemIconId, setItemIconId] = useState<string | null>(null)
   const [itemColorToken, setItemColorToken] = useState<StickerColorToken | null>(null)
   const [itemLocation, setItemLocation] = useState('')
+  const [itemTargetDate, setItemTargetDate] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [uploadingFor, setUploadingFor] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   const [renameName, setRenameName] = useState('')
   const [renameEmoji, setRenameEmoji] = useState('')
+  const [renameIconId, setRenameIconId] = useState<string | null>(null)
   const [renameColor, setRenameColor] = useState<StickerColorToken | null>(null)
   const [renameLoading, setRenameLoading] = useState(false)
   const [inviteLoading, setInviteLoading] = useState(false)
@@ -390,13 +430,76 @@ export default function BucketPage() {
   const [editingItem, setEditingItem] = useState<any | null>(null)
   const [editTitleValue, setEditTitleValue] = useState('')
   const [editEmojiValue, setEditEmojiValue] = useState('✨')
+  const [editIconIdValue, setEditIconIdValue] = useState<string | null>(null)
   const [editColorValue, setEditColorValue] = useState<StickerColorToken | null>(null)
   const [editNoteValue, setEditNoteValue] = useState('')
   const [editLocationValue, setEditLocationValue] = useState('')
+  const [editTargetDateValue, setEditTargetDateValue] = useState<string>('')
   const [editLoadingValue, setEditLoadingValue] = useState(false)
+
+  // Picker resume handlers — one per modal
+  const itemAddResume = useIconPickerResume<{
+    title: string; emoji: string; iconId: string | null;
+    colorToken: StickerColorToken | null; location: string;
+  }>('item-add', (saved, pickedId) => {
+    setTitle(saved.title); setItemEmoji(saved.emoji)
+    setItemIconId(pickedId ?? saved.iconId)
+    setItemColorToken(saved.colorToken)
+    setItemLocation(saved.location)
+    setShowAddItem(true)
+  })
+  const browseItemAddStickers = () => {
+    const url = itemAddResume.stash({
+      title, emoji: itemEmoji, iconId: itemIconId,
+      colorToken: itemColorToken, location: itemLocation,
+    })
+    router.push(url)
+  }
+
+  const itemEditResume = useIconPickerResume<{
+    itemId: string; title: string; emoji: string; iconId: string | null;
+    colorToken: StickerColorToken | null; note: string; location: string;
+  }>('item-edit-bucket', (saved, pickedId) => {
+    // Restore the editing item from store/cache by id
+    const target = items.find(i => i.id === saved.itemId)
+    if (!target) return
+    setEditingItem(target)
+    setEditTitleValue(saved.title); setEditEmojiValue(saved.emoji)
+    setEditIconIdValue(pickedId ?? saved.iconId)
+    setEditColorValue(saved.colorToken)
+    setEditNoteValue(saved.note); setEditLocationValue(saved.location)
+  }, items.length > 0)  // gate consume until items are loaded so a returning pick can find its item
+  const browseItemEditStickers = () => {
+    if (!editingItem) return
+    const url = itemEditResume.stash({
+      itemId: editingItem.id,
+      title: editTitleValue, emoji: editEmojiValue, iconId: editIconIdValue,
+      colorToken: editColorValue, note: editNoteValue, location: editLocationValue,
+    })
+    router.push(url)
+  }
+
+  const renameResume = useIconPickerResume<{
+    name: string; emoji: string; iconId: string | null;
+    colorToken: StickerColorToken | null;
+  }>('bucket-rename', (saved, pickedId) => {
+    setRenameName(saved.name); setRenameEmoji(saved.emoji)
+    setRenameIconId(pickedId ?? saved.iconId)
+    setRenameColor(saved.colorToken)
+    setShowRename(true)
+  })
+  const browseRenameStickers = () => {
+    const url = renameResume.stash({
+      name: renameName, emoji: renameEmoji, iconId: renameIconId, colorToken: renameColor,
+    })
+    router.push(url)
+  }
 
   // Mark-done confirmation modal state
   const [markDoneConfirm, setMarkDoneConfirm] = useState<any | null>(null)
+
+  // Confetti API — fires when an item is marked done
+  const confetti = useConfetti()
 
   useEffect(() => { setActiveBucketId(bucketId) }, [bucketId, setActiveBucketId])
 
@@ -435,14 +538,18 @@ export default function BucketPage() {
         emoji: itemEmoji,
         color_token: chosenColor,
         location: itemLocation.trim() || null,
+        target_date: itemTargetDate || null,
         created_by: profile.id,
         sort_order: (todoItems.length + 1) * 1000,
       }
+      if (itemIconId) insertPayload.icon_id = itemIconId
       const { error } = await supabase.from('items').insert(insertPayload)
       if (error) {
-        // If the column doesn't exist yet (migration not applied), retry without it
-        if (/color_token/.test(error.message)) {
-          delete insertPayload.color_token
+        // If a column doesn't exist yet (migration pending), retry without it
+        const colMatch = error.message.match(/column "?([a-z_]+)"? .*does not exist|Could not find the '?([a-z_]+)'? column/i)
+        const missing = colMatch?.[1] || colMatch?.[2]
+        if (missing && Object.prototype.hasOwnProperty.call(insertPayload, missing)) {
+          delete insertPayload[missing]
           const retry = await supabase.from('items').insert(insertPayload)
           if (retry.error) throw retry.error
         } else {
@@ -452,8 +559,10 @@ export default function BucketPage() {
       // Close modal + reset form IMMEDIATELY so it doesn't feel stuck
       setTitle('')
       setItemEmoji('✨')
+      setItemIconId(null)
       setItemColorToken(null)
       setItemLocation('')
+      setItemTargetDate('')
       setShowAddItem(false)
       setLoading(false)
       // Refresh in background — don't block the UI
@@ -485,6 +594,7 @@ export default function BucketPage() {
     setEditingItem(item)
     setEditTitleValue(item.title || '')
     setEditEmojiValue(item.emoji || '✨')
+    setEditIconIdValue(item.icon_id ?? null)
     setEditColorValue(
       (item.color_token && (STICKER_COLOR_TOKENS as readonly string[]).includes(item.color_token))
         ? (item.color_token as StickerColorToken)
@@ -492,6 +602,7 @@ export default function BucketPage() {
     )
     setEditNoteValue(item.memory_note || '')
     setEditLocationValue(item.location || '')
+    setEditTargetDateValue(item.target_date || '')
   }
 
   const saveEdit = async (e: React.FormEvent) => {
@@ -503,7 +614,9 @@ export default function BucketPage() {
         title: editTitleValue.trim(),
         color_token: editColorValue,
         location: editLocationValue.trim() || null,
+        target_date: editTargetDateValue || null,
         emoji: editEmojiValue,
+        icon_id: editIconIdValue,
         memory_note: editNoteValue.trim() || null,
       })
       setEditingItem(null)
@@ -523,6 +636,7 @@ export default function BucketPage() {
       renameName.trim() || bucket.name,
       renameEmoji || bucket.emoji,
       renameColor,
+      renameIconId,
     )
     setRenameLoading(false)
     if (err) alert(err); else setShowRename(false)
@@ -556,6 +670,7 @@ export default function BucketPage() {
     if (markDoneConfirm) {
       markItemDone(markDoneConfirm.id)
       setMarkDoneConfirm(null)
+      confetti.fire()
     }
   }
 
@@ -590,7 +705,11 @@ export default function BucketPage() {
               fontSize: vp === 'mobile' ? '2.2rem' : '2.8rem', lineHeight: 1,
               transform: 'rotate(-4deg)',
               flex: '0 0 auto',
-            }}>{bucket.emoji || '🪣'}</div>
+            }}>
+              {(bucket as any).icon_id
+                ? <Icon8 id={(bucket as any).icon_id} size={vp === 'mobile' ? 44 : 60} />
+                : (bucket.emoji || '🪣')}
+            </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
                 fontFamily: FONT_DISPLAY, fontSize: 11, fontWeight: 700, letterSpacing: 1.4,
@@ -644,8 +763,10 @@ export default function BucketPage() {
 
       {/* Action buttons */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 22, flexWrap: 'wrap' }}>
-        <StickerButton onClick={() => { setRenameName(bucket.name); setRenameEmoji(bucket.emoji); setRenameColor(bucketColorToken(bucket)); setShowRename(true) }}>
-          ✎ Edit
+        <StickerButton onClick={() => { setRenameName(bucket.name); setRenameEmoji(bucket.emoji); setRenameIconId((bucket as any).icon_id ?? null); setRenameColor(bucketColorToken(bucket)); setShowRename(true) }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <NavIcon name="pencil" size={14} /> Edit
+          </span>
         </StickerButton>
         {invitableFriends.length > 0 && (
           <StickerButton color="lime" onClick={() => setShowInvite(true)}>
@@ -655,6 +776,24 @@ export default function BucketPage() {
         <div style={{ flex: 1 }} />
         <StickerButton color="ink" size="md" onClick={openAddItem}>＋ Add Item</StickerButton>
       </div>
+
+      {/* Empty state — bucket has no items at all */}
+      {items.length === 0 && (
+        <Sticker radius={18} style={{ padding: vp === 'mobile' ? 36 : 48, textAlign: 'center', marginBottom: 28 }}>
+          <div className="emoji" style={{ fontSize: '2.8rem', marginBottom: 14 }}>✨</div>
+          <div style={{
+            fontFamily: FONT_DISPLAY, fontSize: vp === 'mobile' ? 22 : 28,
+            fontWeight: 700, letterSpacing: -0.8, textTransform: 'uppercase', marginBottom: 10,
+          }}>
+            Nothing in here yet
+          </div>
+          <p style={{ color: T.inkMuted, fontWeight: 500, lineHeight: 1.5, marginBottom: 20, maxWidth: 420, marginLeft: 'auto', marginRight: 'auto' }}>
+            Add the first thing you want to tick off — a trip, a meal, a goal,
+            an inside joke. Big or tiny, doesn't matter.
+          </p>
+          <StickerButton color="ink" size="lg" onClick={openAddItem}>＋ ADD FIRST ITEM</StickerButton>
+        </Sticker>
+      )}
 
       {/* Todo section */}
       {todoItems.length > 0 && (
@@ -769,30 +908,19 @@ export default function BucketPage() {
               required autoFocus className="input"
               style={{ fontFamily: FONT_DISPLAY, textTransform: 'uppercase' as const, fontWeight: 700, fontSize: 16, marginBottom: 18 }}
             />
-            <FieldLabel>Icon</FieldLabel>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 6, marginBottom: 18 }}>
-              {ITEM_EMOJIS.map((e) => (
-                <button
-                  key={e} type="button" onClick={() => setEditEmojiValue(e)}
-                  className="bk-sticker-btn emoji"
-                  style={{
-                    fontSize: '1.3rem', padding: '8px 4px', borderRadius: 10, cursor: 'pointer',
-                    border: editEmojiValue === e ? '2.5px solid #0C0C0C' : '2px solid #e0e0e0',
-                    background: editEmojiValue === e
-                      ? (editColorValue ? T[editColorValue] : T.lime)
-                      : '#fff',
-                    boxShadow: editEmojiValue === e ? STICKER_SHADOW_SM : 'none',
-                    lineHeight: 1,
-                  }}
-                >{e}</button>
-              ))}
-            </div>
+            <IconField
+              iconId={editIconIdValue}
+              emoji={editEmojiValue}
+              onBrowse={browseItemEditStickers}
+              onClearIcon={() => setEditIconIdValue(null)}
+            />
             <FieldLabel>Color</FieldLabel>
             <ColorPickerRow
               value={editColorValue}
               onChange={setEditColorValue}
-              onRandomize={() => setEditColorValue(randomColorToken())}
               previewEmoji={editEmojiValue}
+              previewIconId={editIconIdValue}
+              hideShuffle
             />
             <FieldLabel>Location (optional)</FieldLabel>
             <div style={{ marginBottom: 18 }}>
@@ -802,6 +930,11 @@ export default function BucketPage() {
                 placeholder="e.g., Tokyo, Japan"
               />
             </div>
+            <FieldLabel>Target Date (optional)</FieldLabel>
+            <TargetDateInput
+              value={editTargetDateValue}
+              onChange={setEditTargetDateValue}
+            />
             <FieldLabel>Memory Note (optional)</FieldLabel>
             <textarea
               value={editNoteValue} onChange={e => setEditNoteValue(e.target.value)}
@@ -836,30 +969,19 @@ export default function BucketPage() {
               className="input"
               style={{ fontFamily: FONT_DISPLAY, textTransform: 'uppercase' as const, fontWeight: 700, fontSize: 16, marginBottom: 18 }}
             />
-            <FieldLabel>Icon</FieldLabel>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 6, marginBottom: 18 }}>
-              {ITEM_EMOJIS.map((e) => (
-                <button
-                  key={e} type="button" onClick={() => setItemEmoji(e)}
-                  className="bk-sticker-btn emoji"
-                  style={{
-                    fontSize: '1.3rem', padding: '8px 4px', borderRadius: 10, cursor: 'pointer',
-                    border: itemEmoji === e ? '2.5px solid #0C0C0C' : '2px solid #e0e0e0',
-                    background: itemEmoji === e
-                      ? (itemColorToken ? T[itemColorToken] : T.lime)
-                      : '#fff',
-                    boxShadow: itemEmoji === e ? STICKER_SHADOW_SM : 'none',
-                    lineHeight: 1,
-                  }}
-                >{e}</button>
-              ))}
-            </div>
+            <IconField
+              iconId={itemIconId}
+              emoji={itemEmoji}
+              onBrowse={browseItemAddStickers}
+              onClearIcon={() => setItemIconId(null)}
+            />
             <FieldLabel>Color</FieldLabel>
             <ColorPickerRow
               value={itemColorToken}
               onChange={setItemColorToken}
-              onRandomize={() => setItemColorToken(randomColorToken())}
               previewEmoji={itemEmoji}
+              previewIconId={itemIconId}
+              hideShuffle
             />
             <FieldLabel>Location (optional)</FieldLabel>
             <div style={{ marginBottom: 18 }}>
@@ -869,6 +991,11 @@ export default function BucketPage() {
                 placeholder="e.g., Tokyo, Japan"
               />
             </div>
+            <FieldLabel>Target Date (optional)</FieldLabel>
+            <TargetDateInput
+              value={itemTargetDate}
+              onChange={setItemTargetDate}
+            />
             <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
               <StickerButton size="lg" style={{ flex: 1 }} onClick={() => setShowAddItem(false)}>Cancel</StickerButton>
               <StickerButton color="ink" size="lg" type="submit" disabled={loading || !title.trim()} style={{ flex: 2 }}>
@@ -889,32 +1016,19 @@ export default function BucketPage() {
               required className="input"
               style={{ fontFamily: FONT_DISPLAY, textTransform: 'uppercase' as const, fontWeight: 700, fontSize: 16, marginBottom: 18 }}
             />
-            <FieldLabel>Icon</FieldLabel>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 6, marginBottom: 24 }}>
-              {ITEM_EMOJIS.map((e) => (
-                <button
-                  key={e}
-                  type="button"
-                  onClick={() => setRenameEmoji(e)}
-                  className="bk-sticker-btn emoji"
-                  style={{
-                    fontSize: '1.3rem', padding: '8px 4px', borderRadius: 10, cursor: 'pointer',
-                    border: renameEmoji === e ? '2.5px solid #0C0C0C' : '2px solid #e0e0e0',
-                    background: renameEmoji === e
-                      ? (renameColor ? T[renameColor] : T.lime)
-                      : '#fff',
-                    boxShadow: renameEmoji === e ? STICKER_SHADOW_SM : 'none',
-                    lineHeight: 1,
-                  }}
-                >{e}</button>
-              ))}
-            </div>
-            <FieldLabel>Color</FieldLabel>
+            {/* BUCKET COLOR moved above ICON (per request) — unrelated to the icon */}
+            <FieldLabel>Bucket Color</FieldLabel>
             <ColorPickerRow
               value={renameColor}
               onChange={setRenameColor}
-              onRandomize={() => setRenameColor(randomColorToken())}
-              previewEmoji={renameEmoji}
+              hidePreview
+              hideShuffle
+            />
+            <IconField
+              iconId={renameIconId}
+              emoji={renameEmoji}
+              onBrowse={browseRenameStickers}
+              onClearIcon={() => setRenameIconId(null)}
             />
             <div style={{ display: 'flex', gap: 12 }}>
               <StickerButton size="lg" style={{ flex: 1 }} onClick={() => setShowRename(false)}>Cancel</StickerButton>
@@ -989,26 +1103,89 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
+// Native <input type="date"> wrapped in the sticker style + a CLEAR button
+// when a date is set. Value is YYYY-MM-DD (matches Supabase `date` columns).
+function TargetDateInput({
+  value, onChange,
+}: { value: string; onChange: (v: string) => void }) {
+  const countdown = targetCountdown(value)
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input
+          type="date"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="input"
+          style={{
+            flex: 1, fontFamily: FONT_UI, fontSize: 14, fontWeight: 500,
+            colorScheme: 'light',
+          }}
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="bk-sticker-btn"
+            style={{
+              padding: '6px 12px', borderRadius: 10,
+              background: T.surface,
+              border: STICKER_BORDER_SM,
+              fontFamily: FONT_DISPLAY, fontSize: 10, fontWeight: 700, letterSpacing: 0.6,
+              textTransform: 'uppercase', cursor: 'pointer', color: T.ink,
+            }}
+          >CLEAR</button>
+        )}
+      </div>
+      {countdown && (
+        <div style={{
+          marginTop: 6,
+          fontFamily: FONT_DISPLAY, fontSize: 10, fontWeight: 700, letterSpacing: 0.6,
+          color: countdown.tone === 'overdue' ? T.red
+            : countdown.tone === 'today' ? T.ink
+            : T.inkMuted,
+          textTransform: 'uppercase',
+        }}>
+          {countdown.label} · {formatTargetDate(value)}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Color picker — six brand tokens + a random-shuffle button
 function ColorPickerRow({
-  value, onChange, onRandomize, previewEmoji,
+  value, onChange, onRandomize, previewEmoji, previewIconId,
+  hidePreview, hideShuffle,
 }: {
   value: StickerColorToken | null
   onChange: (c: StickerColorToken) => void
-  onRandomize: () => void
+  onRandomize?: () => void
   previewEmoji?: string
+  /** When set, the preview tile renders the Icons8 sticker instead of the emoji. */
+  previewIconId?: string | null
+  /** Hide the tilted preview tile (the bucket-color section is unrelated to the item icon). */
+  hidePreview?: boolean
+  /** Hide the 🎲 Shuffle button. */
+  hideShuffle?: boolean
 }) {
   return (
     <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 18, flexWrap: 'wrap' }}>
       {/* Tilted preview tile so the user sees what their pick will look like */}
-      <div className="emoji" style={{
-        width: 48, height: 48, borderRadius: 12,
-        background: value ? T[value] : T.surface,
-        border: STICKER_BORDER_SM, boxShadow: STICKER_SHADOW_SM,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: '1.4rem', lineHeight: 1,
-        transform: 'rotate(-3deg)', flex: '0 0 auto',
-      }}>{previewEmoji || '✨'}</div>
+      {!hidePreview && (
+        <div className="emoji" style={{
+          width: 48, height: 48, borderRadius: 12,
+          background: value ? T[value] : T.surface,
+          border: STICKER_BORDER_SM, boxShadow: STICKER_SHADOW_SM,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '1.4rem', lineHeight: 1,
+          transform: 'rotate(-3deg)', flex: '0 0 auto',
+        }}>
+          {previewIconId
+            ? <Icon8 id={previewIconId} size={32} />
+            : (previewEmoji || '✨')}
+        </div>
+      )}
 
       {/* Six brand color chips */}
       <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
@@ -1036,20 +1213,22 @@ function ColorPickerRow({
       </div>
 
       {/* Random shuffle */}
-      <button
-        type="button"
-        onClick={onRandomize}
-        className="bk-sticker-btn"
-        title="Randomize color"
-        style={{
-          padding: '6px 12px', borderRadius: 10,
-          background: T.bg,
-          border: STICKER_BORDER_SM, boxShadow: STICKER_SHADOW_SM,
-          fontFamily: FONT_DISPLAY, fontSize: 11, fontWeight: 700, letterSpacing: 0.5,
-          textTransform: 'uppercase', cursor: 'pointer',
-          display: 'inline-flex', alignItems: 'center', gap: 5, color: T.ink,
-        }}
-      >🎲 Shuffle</button>
+      {!hideShuffle && onRandomize && (
+        <button
+          type="button"
+          onClick={onRandomize}
+          className="bk-sticker-btn"
+          title="Randomize color"
+          style={{
+            padding: '6px 12px', borderRadius: 10,
+            background: T.bg,
+            border: STICKER_BORDER_SM, boxShadow: STICKER_SHADOW_SM,
+            fontFamily: FONT_DISPLAY, fontSize: 11, fontWeight: 700, letterSpacing: 0.5,
+            textTransform: 'uppercase', cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: 5, color: T.ink,
+          }}
+        >🎲 Shuffle</button>
+      )}
     </div>
   )
 }

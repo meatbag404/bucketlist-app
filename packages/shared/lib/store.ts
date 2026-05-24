@@ -38,6 +38,13 @@ interface AppState {
   setProfile: (profile: Profile) => void
   setMyAvatarUrl: (url: string | null) => void
 
+  // Migration warnings — populated when an UPDATE/INSERT tried to write a
+  // column the DB doesn't have yet (so the migration hasn't been applied).
+  // Renders as a dismissible banner in the app layout.
+  migrationWarnings: string[]
+  pushMigrationWarning: (column: string) => void
+  dismissMigrationWarning: (column: string) => void
+
   buckets: BucketWithMembers[]
   activeBucketId: string | null
   setBuckets: (buckets: BucketWithMembers[]) => void
@@ -81,6 +88,8 @@ interface AppState {
   deleteItem: (itemId: string) => Promise<void>
   addComment: (itemId: string, text: string) => Promise<void>
   uploadItemPhoto: (itemId: string, uri: string) => Promise<void>
+  uploadProfilePhoto: (file: Blob, ext?: string) => Promise<string | null>
+  removeProfilePhoto: () => Promise<string | null>
   approveJoin: (membershipId: string, bucketId: string, userId: string) => Promise<void>
   declineJoin: (membershipId: string) => Promise<void>
   removeMember: (userId: string, bucketId: string) => Promise<void>
@@ -100,7 +109,7 @@ interface AppState {
   addFriendToBucket: (friendId: string, bucketId: string) => Promise<string | null>
   setBucketHero: (bucketId: string, uri: string) => Promise<string | null>
   reorderItems: (reorderedTodo: ItemWithDetails[]) => Promise<void>
-  renameBucket: (bucketId: string, name: string, emoji: string, colorToken?: string | null) => Promise<string | null>
+  renameBucket: (bucketId: string, name: string, emoji: string, colorToken?: string | null, iconId?: string | null) => Promise<string | null>
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -118,6 +127,16 @@ export const useStore = create<AppState>((set, get) => ({
         .then(({ data }) => { if (data?.signedUrl) set({ myAvatarUrl: data.signedUrl }) })
     }
   },
+
+  migrationWarnings: [],
+  pushMigrationWarning: (column) => set(state => (
+    state.migrationWarnings.includes(column)
+      ? state
+      : { migrationWarnings: [...state.migrationWarnings, column] }
+  )),
+  dismissMigrationWarning: (column) => set(state => ({
+    migrationWarnings: state.migrationWarnings.filter(c => c !== column),
+  })),
 
   buckets: [],
   activeBucketId: null,
@@ -404,6 +423,12 @@ export const useStore = create<AppState>((set, get) => ({
       const stripMatch = error.message.match(/column "?([a-z_]+)"? .*does not exist|Could not find the '?([a-z_]+)'? column/i)
       const missing = stripMatch?.[1] || stripMatch?.[2]
       if (missing && Object.prototype.hasOwnProperty.call(updates as any, missing)) {
+        console.warn(
+          `[editItem] '${missing}' column missing in DB — value dropped. ` +
+          `Run the matching numbered file from migrations/ in your Supabase SQL Editor ` +
+          `(e.g. migrations/007-icon-id.sql for icon_id).`,
+        )
+        get().pushMigrationWarning(missing)
         const retryUpdates = { ...(updates as any) }
         delete retryUpdates[missing]
         const retry = await supabase.from('items').update(retryUpdates).eq('id', itemId)
@@ -616,9 +641,10 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  renameBucket: async (bucketId, name, emoji, colorToken) => {
+  renameBucket: async (bucketId, name, emoji, colorToken, iconId) => {
     const patch: any = { name, emoji }
     if (colorToken !== undefined) patch.color_token = colorToken
+    if (iconId !== undefined) patch.icon_id = iconId
 
     let { error } = await supabase.from('buckets').update(patch).eq('id', bucketId)
     if (error) {
@@ -649,6 +675,68 @@ export const useStore = create<AppState>((set, get) => ({
         supabase.from('items').update({ sort_order: (index + 1) * 1000 }).eq('id', item.id)
       )
     )
+  },
+
+  uploadProfilePhoto: async (file, ext) => {
+    const { profile } = get()
+    if (!profile) return 'Not signed in'
+    try {
+      const blobType = (file as any).type as string | undefined
+      const inferredExt = ext
+        || (blobType === 'image/png' ? 'png'
+          : blobType === 'image/webp' ? 'webp'
+          : blobType === 'image/gif' ? 'gif'
+          : 'jpg')
+      const path = `${profile.id}/${Date.now()}.${inferredExt}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(path, file, {
+          contentType: blobType || 'image/jpeg',
+          upsert: false,
+        })
+      if (uploadError) return uploadError.message
+
+      // Delete the previous file (best-effort — ignore failures).
+      const prev = (profile as any).avatar_url as string | null | undefined
+      if (prev && !/^https?:\/\//i.test(prev)) {
+        supabase.storage.from('avatars').remove([prev]).catch(() => {})
+      }
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: path })
+        .eq('id', profile.id)
+      if (updateError) return updateError.message
+
+      set({ profile: { ...profile, avatar_url: path } as any })
+      // Refresh signed-URL cache for layouts that still use myAvatarUrl.
+      supabase.storage.from('avatars').createSignedUrl(path, 7200)
+        .then(({ data }) => { if (data?.signedUrl) set({ myAvatarUrl: data.signedUrl }) })
+      return null
+    } catch (err: any) {
+      return err?.message ?? 'Upload failed'
+    }
+  },
+
+  removeProfilePhoto: async () => {
+    const { profile } = get()
+    if (!profile) return 'Not signed in'
+    const prev = (profile as any).avatar_url as string | null | undefined
+    try {
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: null })
+        .eq('id', profile.id)
+      if (updateError) return updateError.message
+      if (prev && !/^https?:\/\//i.test(prev)) {
+        supabase.storage.from('avatars').remove([prev]).catch(() => {})
+      }
+      set({ profile: { ...profile, avatar_url: null } as any, myAvatarUrl: null })
+      return null
+    } catch (err: any) {
+      return err?.message ?? 'Remove failed'
+    }
   },
 
   uploadItemPhoto: async (itemId, uri) => {

@@ -7,6 +7,7 @@ import {
   T, FONT_DISPLAY, FONT_MONO, STICKER_BORDER_SM, STICKER_SHADOW_SM,
   Sticker, Avatar, PageHeading, HighlightBlock, StickerChip, NavIcon,
   color as resolveColor,
+  Icon8,
 } from '@bucketlist/shared'
 
 // Hashed color per bucket id (same scheme as buckets page)
@@ -179,7 +180,9 @@ export default function MemoriesPage() {
             const c = colorForBucket(b.id)
             return (
               <StickerChip key={b.id} active={bucketFilter === b.id} color={c} onClick={() => setBucketFilter(bucketFilter === b.id ? null : b.id)}>
-                <span className="emoji" style={{ marginRight: 4 }}>{b.emoji}</span>{b.name}
+                {(b as any).icon_id
+                  ? <span style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }}><Icon8 id={(b as any).icon_id} size={14} /></span>
+                  : <span className="emoji" style={{ marginRight: 4 }}>{b.emoji}</span>}{b.name}
               </StickerChip>
             )
           })}

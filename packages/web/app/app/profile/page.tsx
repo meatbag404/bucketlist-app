@@ -1,15 +1,18 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   useStore, supabase, useViewport,
   T, FONT_DISPLAY, FONT_MONO, FONT_UI, STICKER_BORDER_SM, STICKER_SHADOW_SM,
-  Sticker, StickerButton, Avatar, PageHeading,
+  Sticker, StickerButton, Avatar, PageHeading, NavIcon,
 } from '@bucketlist/shared'
 
 export default function ProfilePage() {
-  const { profile, setProfile } = useStore()
+  const { profile, setProfile, uploadProfilePhoto, removeProfilePhoto } = useStore()
   const vp = useViewport()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const [photoError, setPhotoError] = useState<string | null>(null)
 
   const [name, setName] = useState('')
   const [handle, setHandle] = useState('')
@@ -60,6 +63,33 @@ export default function ProfilePage() {
     } finally { setLoading(false) }
   }
 
+  const onPickPhoto = () => {
+    setPhotoError(null)
+    fileInputRef.current?.click()
+  }
+
+  const onPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoError('Image must be 5 MB or smaller.')
+      return
+    }
+    setPhotoUploading(true); setPhotoError(null)
+    const err = await uploadProfilePhoto(file)
+    setPhotoUploading(false)
+    if (err) setPhotoError(err)
+  }
+
+  const onRemovePhoto = async () => {
+    if (!confirm('Remove your profile photo?')) return
+    setPhotoUploading(true); setPhotoError(null)
+    const err = await removeProfilePhoto()
+    setPhotoUploading(false)
+    if (err) setPhotoError(err)
+  }
+
   const handleSignOut = async () => {
     if (confirm('Are you sure you want to sign out?')) {
       await supabase.auth.signOut()
@@ -72,9 +102,38 @@ export default function ProfilePage() {
       <PageHeading lineA="YOUR" lineB="PROFILE." sub="Manage your name, handle, and where you're based." vp={vp} />
 
       {/* Identity card */}
-      <Sticker color="cyan" radius={18} style={{ padding: 24, marginBottom: 22, display: 'flex', alignItems: 'center', gap: 20 }}>
-        <Avatar p={profile} size={84} />
-        <div style={{ minWidth: 0 }}>
+      <Sticker color="cyan" radius={18} style={{ padding: 24, marginBottom: 22, display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: '0 0 auto' }}>
+          <Avatar p={profile} size={84} />
+          <button
+            type="button"
+            onClick={onPickPhoto}
+            disabled={photoUploading}
+            aria-label="Change profile photo"
+            className="bk-sticker-btn"
+            style={{
+              position: 'absolute', right: -6, bottom: -6,
+              width: 32, height: 32, borderRadius: 99,
+              background: T.ink, color: T.bg,
+              border: STICKER_BORDER_SM, boxShadow: STICKER_SHADOW_SM,
+              cursor: photoUploading ? 'wait' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 0,
+            }}
+          >
+            {photoUploading
+              ? <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1 }}>…</span>
+              : <NavIcon name="pencil" size={16} color={T.bg} />}
+          </button>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={onPhotoChange}
+        />
+        <div style={{ minWidth: 0, flex: 1 }}>
           <p style={{
             fontFamily: FONT_DISPLAY, fontSize: vp === 'mobile' ? 22 : 28, fontWeight: 700,
             color: T.ink, textTransform: 'uppercase' as const, letterSpacing: -0.8, lineHeight: 1,
@@ -83,6 +142,21 @@ export default function ProfilePage() {
           {(profile as any).city && (
             <p style={{ fontFamily: FONT_DISPLAY, fontSize: 11, color: T.ink, marginTop: 6, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase' }}>
               📍 {(profile as any).city}{(profile as any).state ? `, ${(profile as any).state}` : ''}
+            </p>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            <StickerButton size="sm" onClick={onPickPhoto} disabled={photoUploading}>
+              {(profile as any).avatar_url ? 'CHANGE PHOTO' : 'ADD PHOTO'}
+            </StickerButton>
+            {(profile as any).avatar_url && (
+              <StickerButton size="sm" onClick={onRemovePhoto} disabled={photoUploading}>
+                REMOVE
+              </StickerButton>
+            )}
+          </div>
+          {photoError && (
+            <p style={{ fontFamily: FONT_UI, fontSize: 12, fontWeight: 600, color: T.red, marginTop: 8 }}>
+              {photoError}
             </p>
           )}
         </div>

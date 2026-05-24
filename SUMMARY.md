@@ -22,21 +22,21 @@ bucket-list/
 │   │   ├── package.json
 │   │   ├── postcss.config.mjs
 │   │   └── tailwind.config.ts
-│   ├── shared/                            shared lib used by both web and mobile
-│   │   └── lib/
-│   │       ├── design-tokens.ts           T palette, fonts, sticker constants,
-│   │       │                              itemColor/bucketColor helpers
-│   │       ├── nav-icons.tsx              11-icon SVG stroke library
-│   │       ├── sticker.tsx                Sticker, StickerButton, StickerChip,
-│   │       │                              HighlightBlock, Avatar, AvatarStack,
-│   │       │                              PageHeading, SectionRule, MonoLabel
-│   │       ├── use-viewport.ts            useViewport() → mobile | tablet | desktop
-│   │       ├── store.ts                   Zustand store (buckets, items, friends,
-│   │       │                              activity, mark-done, edit-item, photo upload)
-│   │       ├── supabase.ts                Supabase client (env-driven)
-│   │       ├── types.ts                   Generated Database types
-│   │       └── index.ts                   public surface
-│   └── mobile/                            Expo workspace (parallel mobile app)
+│   └── shared/                            shared lib used by the web app
+│       └── lib/
+│           ├── design-tokens.ts           T palette, fonts, sticker constants,
+│           │                              itemColor/bucketColor helpers
+│           ├── nav-icons.tsx              11-icon SVG stroke library
+│           ├── sticker.tsx                Sticker, StickerButton, StickerChip,
+│           │                              HighlightBlock, Avatar, AvatarStack,
+│           │                              PageHeading, SectionRule, MonoLabel
+│           ├── icon-set.tsx               Curated Icons8 sticker library + Icon8 component
+│           ├── use-viewport.ts            useViewport() → mobile | tablet | desktop
+│           ├── store.ts                   Zustand store (buckets, items, friends,
+│           │                              activity, mark-done, edit-item, photo upload)
+│           ├── supabase.ts                Supabase client (env-driven)
+│           ├── types.ts                   Generated Database types
+│           └── index.ts                   public surface
 ├── Bucket List App Design WTM/
 │   ├── design_handoff_bucket_web/         ★ canonical web design handoff
 │   │                                      (tokens.jsx, app-shell.jsx, screens-a/b/c.jsx,
@@ -48,21 +48,12 @@ bucket-list/
 ├── package-lock.json
 ├── vercel.json                            tells Vercel: cd packages/web && build
 ├── .gitignore
-├── bucket_schema.sql                      canonical Supabase schema
-├── add-item-color.sql                     migration: items.color_token column
-├── add-bucket-color.sql                   migration: buckets.color_token column
-├── fix-bucket-members-and-add-color.sql   ★ run if not yet — consolidates the
-│                                          two color columns + fixes bucket_members
-│                                          INSERT policy + back-fills orphan memberships
-├── fix-missing-columns.sql                migration: profiles.avatar_url/city/state/etc.
-├── fix-friendships.sql                    earlier friendship schema fix
-├── fix-profiles-rls.sql                   earlier profiles RLS fix
-├── README.md                              Expo setup notes (legacy; mostly relevant
-│                                          to packages/mobile)
-├── MONOREPO.md                            monorepo + workspace layout
+├── migrations/                            ★ numbered Supabase migrations
+│                                          (see migrations/README.md for apply order)
+├── README.md                              top-level overview (Next.js app + Supabase)
+├── MONOREPO.md                            workspace layout (web + shared)
 ├── VERCEL_DEPLOYMENT.md                   how the Vercel build is wired up
 ├── DEPLOYMENT_SUMMARY.md                  earlier deploy notes
-├── HANDOFF.md                             higher-level project handoff
 └── SUMMARY.md                             ← you are here
 ```
 
@@ -89,13 +80,10 @@ bucket-list/
 
 ## 🗄 Supabase schema
 
-The canonical schema lives in `bucket_schema.sql`. On a fresh project, run it, then layer the migrations in this order (most are idempotent and use `IF EXISTS / IF NOT EXISTS`):
-
-1. `fix-profiles-rls.sql`
-2. `fix-friendships.sql`
-3. `fix-missing-columns.sql` (adds `profiles.city/state/country`, `buckets.hero_url`, `items.starred/target_date`, storage buckets `item-photos` + `bucket-heroes`)
-4. `add-item-color.sql` (or skip — covered by #5)
-5. `fix-bucket-members-and-add-color.sql` — **the most recent one**; adds `buckets.color_token`, fixes the `bucket_members` INSERT policy, and back-fills orphan bucket memberships
+All migrations now live in [`migrations/`](migrations/README.md) numbered by
+apply order (000–008). Run them sequentially against a fresh Supabase project.
+Each is idempotent so re-running is safe. The README in that folder has the
+full one-line summary per file.
 
 ### Key tables
 

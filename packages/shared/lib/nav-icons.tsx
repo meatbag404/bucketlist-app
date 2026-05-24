@@ -7,6 +7,7 @@ import React from 'react'
 export type NavIconName =
   | 'bucket' | 'clock' | 'plus' | 'photo' | 'friends'
   | 'pin' | 'heart' | 'star' | 'check' | 'chat' | 'search'
+  | 'pencil' | 'trash' | 'close'
 
 type PathDef = { d: string; strokeWidth?: number; strokeOpacity?: number }
 type ElementDef =
@@ -84,6 +85,30 @@ export const NAV_ICONS: Record<NavIconName, IconDef> = {
     label: 'Search',
     elements: [{ kind: 'circle', cx: 10.5, cy: 10.5, r: 6 }],
     paths: [{ d: 'M15 15 L20 20', strokeWidth: 3 }],
+  },
+  pencil: {
+    label: 'Edit / pencil',
+    paths: [
+      { d: 'M4 20 L4 16 L16 4 L20 8 L8 20 Z' },
+      { d: 'M13 7 L17 11', strokeOpacity: 0.45 },
+    ],
+  },
+  trash: {
+    label: 'Delete / trash',
+    paths: [
+      { d: 'M4 7 L20 7' },
+      { d: 'M9 7 L9 4.5 L15 4.5 L15 7' },
+      { d: 'M6 7 L7.5 20 L16.5 20 L18 7' },
+      { d: 'M10 11 L10 17', strokeOpacity: 0.5 },
+      { d: 'M14 11 L14 17', strokeOpacity: 0.5 },
+    ],
+  },
+  close: {
+    label: 'Close / cancel',
+    paths: [
+      { d: 'M6 6 L18 18', strokeWidth: 3 },
+      { d: 'M18 6 L6 18', strokeWidth: 3 },
+    ],
   },
 }
 

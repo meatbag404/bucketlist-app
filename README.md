@@ -1,136 +1,53 @@
-# 🪣 Bucket — Setup Guide
+# Bucket List
 
-## Prerequisites
-- Node.js 18+
-- Expo CLI: `npm install -g expo-cli`
-- Expo Go app on your phone (for testing)
-- Your Supabase project running with the schema applied
+A bold "sticker-design" web app for shared bucket lists. Production at
+[bucketlist-app-alpha.vercel.app](https://bucketlist-app-alpha.vercel.app).
 
----
+- **Web app**: Next.js 16 (App Router) + Tailwind v4
+- **Data + auth**: Supabase (Postgres + RLS, Storage, Realtime)
+- **Hosting**: Vercel (deploy on push to `main`)
+- **Icons**: Curated Icons8 "Flat Color" set via [`@bucketlist/shared`](packages/shared/lib/icon-set.tsx)
 
-## 1. Create the project
+## Repo layout
+
+```
+packages/
+├── web/     ★ Next.js app — the deployed product
+└── shared/  Platform-agnostic lib (types, Supabase client,
+            Zustand store, design tokens, sticker primitives,
+            icon library)
+```
+
+See [MONOREPO.md](MONOREPO.md) for the full breakdown of the shared package.
+
+## Run it locally
 
 ```bash
-npx create-expo-app@latest bucket --template blank-typescript
-cd bucket
+npm install         # install both workspaces
+npm run dev:web     # http://localhost:3000
 ```
 
-## 2. Install dependencies
-
-```bash
-npx expo install expo-router expo-secure-store expo-image-picker \
-  expo-notifications expo-linking expo-constants expo-status-bar \
-  react-native-safe-area-context react-native-screens \
-  react-native-gesture-handler react-native-reanimated
-
-npm install @supabase/supabase-js @react-navigation/native zustand date-fns
-```
-
-## 3. Copy project files
-
-Copy all files from this folder into your project, maintaining the same structure:
+You'll need `packages/web/.env.local` with Supabase credentials:
 
 ```
-bucket/
-  app/
-    _layout.tsx          ← Root layout with auth routing
-    (auth)/
-      login.tsx          ← Login / signup screen
-    (app)/
-      _layout.tsx        ← Tab bar layout
-      index.tsx          ← Main bucket screen
-      activity.tsx       ← Activity feed
-      memories.tsx       ← Memories view
-      together.tsx       ← Surprise + export
-      friends.tsx        ← Friends management
-  src/
-    lib/
-      supabase.ts        ← Supabase client (add your keys here!)
-    types/
-      database.ts        ← TypeScript types
-    store/
-      index.ts           ← Zustand global store
-    hooks/
-      useRealtimeSync.ts ← Real-time subscriptions
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+GOOGLE_API_KEY=...        # server-side only, for /api/places/autocomplete
 ```
 
-## 4. Add your Supabase credentials
+## Deploy
 
-Open `src/lib/supabase.ts` and replace:
+Vercel is wired to build `packages/web` on every push to `main`. See
+[VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md) for the original setup.
 
-```ts
-const SUPABASE_URL = 'YOUR_SUPABASE_URL'
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY'
-```
+## Schema
 
-Find these in: **Supabase Dashboard → Project Settings → API**
+All migrations live in [`migrations/`](migrations/README.md), numbered by
+apply order. Run them sequentially against a fresh Supabase project — each
+file is idempotent so re-runs are safe.
 
-## 5. Configure app.json for expo-router
+## Where to look next
 
-Add to your `app.json`:
-
-```json
-{
-  "expo": {
-    "scheme": "bucket",
-    "web": { "bundler": "metro" },
-    "plugins": [
-      "expo-router",
-      "expo-secure-store"
-    ]
-  }
-}
-```
-
-## 6. Run it
-
-```bash
-npx expo start
-```
-
-- Press `i` for iOS simulator
-- Press `a` for Android emulator  
-- Scan QR code with Expo Go for your physical device
-- Press `w` for web browser
-
----
-
-## Next steps to build
-
-### Remaining screens (build these next)
-- `app/(app)/memories.tsx` — done items with photos and notes
-- `app/(app)/together.tsx` — surprise spinner + export
-- `app/(app)/friends.tsx` — member management + invite flow
-
-### Features to add
-1. **Push notifications** — use `expo-notifications` + Supabase webhooks
-2. **Photo upload** — use `expo-image-picker` + Supabase Storage
-3. **Onboarding flow** — first-run experience
-4. **Multiple buckets** — bucket switcher UI
-5. **Apple Sign In** — add `expo-apple-authentication`
-
-### iOS App Store submission
-When ready:
-```bash
-npm install -g eas-cli
-eas login
-eas build:configure
-eas build --platform ios
-eas submit --platform ios
-```
-
----
-
-## Folder structure explained
-
-| File | Purpose |
-|------|---------|
-| `src/lib/supabase.ts` | Supabase client with secure token storage |
-| `src/types/database.ts` | TypeScript types for every table |
-| `src/store/index.ts` | Global state (Zustand) — all data lives here |
-| `src/hooks/useRealtimeSync.ts` | Real-time listeners for live updates |
-| `app/_layout.tsx` | Auth gate — redirects to login if no session |
-| `app/(auth)/login.tsx` | Email login + signup |
-| `app/(app)/_layout.tsx` | Tab bar + real-time setup |
-| `app/(app)/index.tsx` | Main bucket list screen |
-| `app/(app)/activity.tsx` | Activity feed |
+- [SUMMARY.md](SUMMARY.md) — exhaustive map of every file in the repo
+- [MONOREPO.md](MONOREPO.md) — workspace + shared lib reference
+- [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md) — deploy steps

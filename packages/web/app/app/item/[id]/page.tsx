@@ -7,7 +7,12 @@ import {
   T, FONT_DISPLAY, FONT_UI, FONT_MONO, STICKER_BORDER, STICKER_BORDER_SM, STICKER_SHADOW, STICKER_SHADOW_SM,
   Sticker, StickerButton, Avatar, NavIcon, SectionLabel,
   color as resolveColor,
+  Icon8, getIcon, IconField, useConfetti,
+  targetCountdown, formatTargetDate,
 } from '@bucketlist/shared'
+
+const PICKER_RESULT_KEY = 'iconPicker:result'
+const ITEM_EDIT_RESUME_KEY = 'itemEdit:resume'
 
 const CARD_COLORS = ['cyan', 'pink', 'lime', 'yellow', 'blue', 'red'] as const
 function colorForBucket(id: string): string {
@@ -61,11 +66,15 @@ export default function ItemDetailPage() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [fetchedItem, setFetchedItem] = useState<any | null>(null)
 
+  const confetti = useConfetti()
+
   // Edit modal state
   const [showEdit, setShowEdit] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editEmoji, setEditEmoji] = useState('✨')
+  const [editIconId, setEditIconId] = useState<string | null>(null)
   const [editNote, setEditNote] = useState('')
+  const [editTargetDate, setEditTargetDate] = useState<string>('')
   const [editLoading, setEditLoading] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
 
@@ -144,8 +153,53 @@ export default function ItemDetailPage() {
   const openEdit = () => {
     setEditTitle(item.title || '')
     setEditEmoji(item.emoji || '✨')
+    setEditIconId(item.icon_id ?? null)
     setEditNote(item.memory_note || '')
+    setEditTargetDate(item.target_date || '')
     setShowEdit(true)
+  }
+
+  // When the icon picker bounces us back, restore the in-flight edit modal
+  // state and apply whichever sticker the user just selected.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !item) return
+    const consume = () => {
+      const raw = window.sessionStorage.getItem(ITEM_EDIT_RESUME_KEY)
+      const pickedId = window.sessionStorage.getItem(PICKER_RESULT_KEY)
+      if (!raw) return
+      try {
+        const saved = JSON.parse(raw) as {
+          itemId: string; title: string; emoji: string;
+          iconId: string | null; note: string;
+        }
+        if (saved.itemId !== item.id) return
+        setEditTitle(saved.title)
+        setEditEmoji(saved.emoji)
+        setEditIconId(pickedId ?? saved.iconId)
+        setEditNote(saved.note)
+        setShowEdit(true)
+      } finally {
+        window.sessionStorage.removeItem(ITEM_EDIT_RESUME_KEY)
+        window.sessionStorage.removeItem(PICKER_RESULT_KEY)
+      }
+    }
+    consume()
+    const onFocus = () => consume()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [item])
+
+  const browseStickers = () => {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(ITEM_EDIT_RESUME_KEY, JSON.stringify({
+        itemId: item.id,
+        title: editTitle,
+        emoji: editEmoji,
+        iconId: editIconId,
+        note: editNote,
+      }))
+    }
+    router.push(`/app/icons${editIconId ? `?selected=${encodeURIComponent(editIconId)}` : ''}`)
   }
 
   const saveEdit = async (e: React.FormEvent) => {
@@ -156,7 +210,9 @@ export default function ItemDetailPage() {
       await editItem(item.id, {
         title: editTitle.trim(),
         emoji: editEmoji,
+        icon_id: editIconId,
         memory_note: editNote.trim() || null,
+        target_date: editTargetDate || null,
       })
       setShowEdit(false)
     } catch (err: any) {
@@ -200,7 +256,9 @@ export default function ItemDetailPage() {
                   fontFamily: FONT_DISPLAY, fontSize: 10, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase',
                   display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', color: T.ink,
                 }}>
-                  <span className="emoji">{bucket.emoji}</span> {bucket.name}
+                  {(bucket as any).icon_id
+                    ? <Icon8 id={(bucket as any).icon_id} size={14} />
+                    : <span className="emoji">{bucket.emoji}</span>} {bucket.name}
                 </div>
               )}
               {item.done && (
@@ -211,13 +269,32 @@ export default function ItemDetailPage() {
                   color: T.ink,
                 }}>✓ DONE</div>
               )}
+              {!item.done && (() => {
+                const cd = targetCountdown(item.target_date)
+                if (!cd) return null
+                const bg = cd.tone === 'overdue' ? T.red
+                  : cd.tone === 'today' || cd.tone === 'soon' ? T.yellow
+                  : T.lime
+                const fg = cd.tone === 'overdue' ? '#fff' : T.ink
+                return (
+                  <div title={formatTargetDate(item.target_date) ?? ''} style={{
+                    padding: '4px 10px', background: bg, color: fg, borderRadius: 99,
+                    border: STICKER_BORDER_SM, boxShadow: STICKER_SHADOW_SM,
+                    fontFamily: FONT_DISPLAY, fontSize: 10, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase',
+                  }}>⏰ {cd.label}</div>
+                )
+              })()}
             </div>
 
             <div className="emoji" style={{
               fontSize: vp === 'mobile' ? '4rem' : '5.5rem', lineHeight: 1,
               transform: 'rotate(-4deg)',
               display: 'inline-block', marginBottom: 8,
-            }}>{item.emoji || '✨'}</div>
+            }}>
+              {item.icon_id
+                ? <Icon8 id={item.icon_id} size={vp === 'mobile' ? 72 : 96} />
+                : (item.emoji || '✨')}
+            </div>
 
             <div style={{
               fontFamily: FONT_DISPLAY,
@@ -262,16 +339,20 @@ export default function ItemDetailPage() {
             {item.done ? (
               <StickerButton color="surface" size="lg" style={{ flex: 1 }} onClick={() => restoreItem(item.id)}>↩ RESTORE</StickerButton>
             ) : (
-              <StickerButton color="lime" size="lg" style={{ flex: 1 }} onClick={() => markItemDone(item.id)}>✓ MARK DONE</StickerButton>
+              <StickerButton color="lime" size="lg" style={{ flex: 1 }} onClick={() => { markItemDone(item.id); confetti.fire() }}>✓ MARK DONE</StickerButton>
             )}
-            <StickerButton color="surface" size="lg" onClick={openEdit}>✎</StickerButton>
+            <StickerButton color="surface" size="lg" onClick={openEdit}>
+              <NavIcon name="pencil" size={18} />
+            </StickerButton>
             <StickerButton
               color={deleteConfirm ? 'red' : 'surface'}
               textColor={deleteConfirm ? '#fff' : undefined}
               size="lg"
               onClick={handleDelete}
             >
-              {deleteConfirm ? 'DELETE?' : '🗑'}
+              {deleteConfirm
+                ? 'DELETE?'
+                : <NavIcon name="trash" size={18} color={T.ink} />}
             </StickerButton>
           </div>
         </div>
@@ -403,26 +484,38 @@ export default function ItemDetailPage() {
                 style={{ fontFamily: FONT_DISPLAY, textTransform: 'uppercase' as const, fontWeight: 700, fontSize: 16, marginBottom: 18 }}
               />
 
+              <IconField
+                iconId={editIconId}
+                emoji={editEmoji}
+                onBrowse={browseStickers}
+                onClearIcon={() => setEditIconId(null)}
+              />
+
               <div style={{
                 fontFamily: FONT_DISPLAY, fontSize: 10, fontWeight: 700, letterSpacing: 1.2,
                 color: T.inkMuted, textTransform: 'uppercase', marginBottom: 6,
-              }}>Icon</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 6, marginBottom: 18 }}>
-                {ITEM_EMOJIS.map((e) => (
+              }}>Target Date (optional)</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18 }}>
+                <input
+                  type="date"
+                  value={editTargetDate}
+                  onChange={e => setEditTargetDate(e.target.value)}
+                  className="input"
+                  style={{ flex: 1, fontFamily: FONT_UI, fontSize: 14, fontWeight: 500 }}
+                />
+                {editTargetDate && (
                   <button
-                    key={e}
                     type="button"
-                    onClick={() => setEditEmoji(e)}
-                    className="bk-sticker-btn emoji"
+                    onClick={() => setEditTargetDate('')}
+                    className="bk-sticker-btn"
                     style={{
-                      fontSize: '1.3rem', padding: '8px 4px', borderRadius: 10, cursor: 'pointer',
-                      border: editEmoji === e ? '2.5px solid #0C0C0C' : '2px solid #e0e0e0',
-                      background: editEmoji === e ? T.lime : '#fff',
-                      boxShadow: editEmoji === e ? STICKER_SHADOW_SM : 'none',
-                      lineHeight: 1,
+                      padding: '6px 12px', borderRadius: 10,
+                      background: T.surface, border: STICKER_BORDER_SM,
+                      fontFamily: FONT_DISPLAY, fontSize: 10, fontWeight: 700, letterSpacing: 0.6,
+                      textTransform: 'uppercase', cursor: 'pointer', color: T.ink,
                     }}
-                  >{e}</button>
-                ))}
+                  >CLEAR</button>
+                )}
               </div>
 
               <div style={{

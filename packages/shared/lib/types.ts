@@ -48,6 +48,7 @@ export interface Database {
           id: string
           name: string
           emoji: string
+          icon_id: string | null
           color_token: string | null
           created_by: string | null
           invite_code: string
@@ -57,6 +58,7 @@ export interface Database {
         Insert: {
           name: string
           emoji?: string
+          icon_id?: string | null
           color_token?: string | null
           created_by?: string
           hero_url?: string | null
@@ -64,6 +66,7 @@ export interface Database {
         Update: {
           name?: string
           emoji?: string
+          icon_id?: string | null
           color_token?: string | null
           hero_url?: string | null
         }
@@ -122,6 +125,7 @@ export interface Database {
           title: string
           category_key: string
           emoji: string
+          icon_id: string | null
           color_token: string | null
           done: boolean
           done_at: string | null
@@ -140,6 +144,7 @@ export interface Database {
           title: string
           category_key?: string
           emoji?: string
+          icon_id?: string | null
           color_token?: string | null
           done?: boolean
           starred?: boolean
@@ -153,6 +158,7 @@ export interface Database {
           title?: string
           category_key?: string
           emoji?: string
+          icon_id?: string | null
           color_token?: string | null
           done?: boolean
           done_at?: string
